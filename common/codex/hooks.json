@@ -1,0 +1,43 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "command": "python3 \"$HOME/.claude/hooks/guard-destructive.py\"",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 \"__CLX_HOME__/.codex/hooks/sync-grok-model-config.py\" --default-openai",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "python3 \"__CLX_HOME__/.codex/hooks/sync-grok-model-config.py\"",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
+            "command": "python3 \"__CLX_HOME__/.codex/hooks/session-intent.py\"",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}

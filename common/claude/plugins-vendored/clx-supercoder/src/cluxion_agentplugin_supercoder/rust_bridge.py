@@ -1,0 +1,367 @@
+"""Repo index bridge with a three-tier backend chain.
+
+Backend resolution order (override with CLUXION_SUPERCODER_BACKEND):
+1. ``native``     — in-process Rust extension (supercoder_index_native)
+2. ``subprocess`` — Rust CLI binary over JSON stdin/stdout
+3. ``python``     — pure-Python walk + hash, semantics-identical
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+INDEX_BIN_ENV = "CLUXION_SUPERCODER_INDEX_BIN"
+INDEX_BACKEND_ENV = "CLUXION_SUPERCODER_BACKEND"
+
+DEFAULT_MAX_FILES = 256
+SKIP_DIRS = {".git", "node_modules", ".venv", "dist", "target"}
+DEFAULT_EXTENSIONS = (".py", ".rs", ".ts", ".tsx", ".js", ".go", ".md", ".toml", ".yaml", ".yml")
+
+_native: object | None = None
+_native_resolved = False
+_fallback_warned = False
+_BACKENDS = {"native", "subprocess", "python"}
+
+
+def _load_native() -> object | None:
+    """Import the native extension on first use, not at module load.
+
+    The wheel import costs 100-300ms; --help and pure-python commands
+    should never pay it.
+    """
+    global _native, _native_resolved
+    if not _native_resolved:
+        try:
+            import supercoder_index_native
+
+            _native = supercoder_index_native
+        except ImportError:
+            _native = None
+        _native_resolved = True
+    return _native
+
+
+def resolve_backend() -> str:
+    """Pick the best available backend, honoring the env override."""
+    forced = _forced_backend()
+    if forced is not None:
+        return forced
+    if _load_native() is not None:
+        return "native"
+    if shutil.which(_binary()) is not None:
+        return "subprocess"
+    return "python"
+
+
+def index_available() -> bool:
+    """Return True when the selected backend is operational (not merely present).
+
+    Forced native/subprocess require a tiny check-boundary protocol smoke
+    (``scan_repo_result`` with ``max_files=1``). Presence alone is insufficient:
+    a forced binary/object that cannot speak the JSON protocol must report False.
+    Python (and auto resolving to python) remains available without that probe.
+    This is not a hot-path or daemon health check.
+    """
+    backend = resolve_backend()
+    if backend == "python":
+        return True
+    if backend == "native":
+        if _load_native() is None:
+            return False
+    elif backend == "subprocess":
+        if shutil.which(_binary()) is None:
+            return False
+    else:
+        return True
+
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+            result = scan_repo_result(root, max_files=1)
+    except Exception:
+        return False
+    if result.get("ok") is not True or result.get("fallback_from"):
+        return False
+    entries = result.get("entries")
+    if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+        return False
+    entry = entries[0]
+    total_lines = entry.get("total_lines")
+    return (
+        entry.get("path") == "a.py"
+        and isinstance(entry.get("file_hash"), str)
+        and bool(entry["file_hash"])
+        and isinstance(total_lines, int)
+        and not isinstance(total_lines, bool)
+        and total_lines >= 1
+    )
+
+
+def scan_repo(
+    root: Path,
+    *,
+    max_files: int = DEFAULT_MAX_FILES,
+    extensions: tuple[str, ...] = DEFAULT_EXTENSIONS,
+) -> list[dict[str, object]]:
+    """Index files under root: sorted, capped, each entry {path, file_hash, total_lines}."""
+    result = scan_repo_result(root, max_files=max_files, extensions=extensions)
+    entries = result.get("entries")
+    return entries if isinstance(entries, list) else []
+
+
+def scan_repo_result(
+    root: Path,
+    *,
+    max_files: int = DEFAULT_MAX_FILES,
+    extensions: tuple[str, ...] = DEFAULT_EXTENSIONS,
+) -> dict[str, object]:
+    """Index files and return backend metadata for structured tool output."""
+    payload = {
+        "root": str(root),
+        "max_files": max_files,
+        "extensions": list(extensions),
+    }
+    backend = resolve_backend()
+    if backend == "python":
+        result = _py_scan(root, max_files=max_files, extensions=extensions)
+    else:
+        try:
+            result = _invoke_native("scan", payload) if backend == "native" else _invoke_subprocess("scan", payload)
+        except Exception as exc:
+            if _forced_backend() == backend:
+                return {
+                    "ok": False,
+                    "error": "backend_unavailable",
+                    "message": f"{backend} backend is forced but unavailable: {type(exc).__name__}: {exc}",
+                    "hint": (
+                        f"Install/fix the {backend} backend or unset {INDEX_BACKEND_ENV}={backend} to allow fallback."
+                    ),
+                }
+            _warn_fallback(backend, exc)
+            result = _py_scan(root, max_files=max_files, extensions=extensions)
+            result["fallback_from"] = backend
+    result["backend"] = "python" if result.get("fallback_from") else backend
+    result.setdefault("ok", True)
+    return result
+
+
+def fuzzy_span_result(text: str, reference: str) -> dict[str, object] | None:
+    """Best fuzzy span via a rust backend; None means "use the python tier".
+
+    Parity with core.hash_patch._best_fuzzy_span is proven per-release by
+    tests/test_fuzzy_parity.py; any backend failure (including an older
+    binary without the fuzzy_span op) falls back silently-but-warned.
+
+    This function is the sole validation owner for fuzzy_span backend dicts:
+    malformed/missing/wrong-range results never coerce — they warn once and
+    return None so the Python fuzzy tier runs.
+    """
+    backend = resolve_backend()
+    if backend == "python":
+        return None
+    payload = {"text": text, "reference": reference}
+    try:
+        result = (
+            _invoke_native("fuzzy_span", payload) if backend == "native" else _invoke_subprocess("fuzzy_span", payload)
+        )
+    except Exception as exc:
+        _warn_fallback(backend, exc)
+        return None
+    validated = _validate_fuzzy_span_result(result, text)
+    if validated is None:
+        _warn_fallback(backend, RuntimeError("malformed fuzzy_span backend result"))
+        return None
+    validated["backend"] = backend
+    return validated
+
+
+def _validate_fuzzy_span_result(result: object, text: str) -> dict[str, object] | None:
+    """Strict schema for fuzzy_span backend payloads (no clamp/coerce)."""
+    if not isinstance(result, dict):
+        return None
+    if result.get("ok") is not True:
+        return None
+    matched = result.get("matched")
+    if matched is not True and matched is not False:
+        return None
+    if matched is False:
+        return {"ok": True, "matched": False}
+    start = result.get("start")
+    end = result.get("end")
+    if isinstance(start, bool) or not isinstance(start, int):
+        return None
+    if isinstance(end, bool) or not isinstance(end, int):
+        return None
+    ambiguous = result.get("ambiguous")
+    if ambiguous is not True and ambiguous is not False:
+        return None
+    score = result.get("score")
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        return None
+    try:
+        numeric_score = float(score)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(numeric_score) or not (0.0 <= numeric_score <= 1.0):
+        return None
+    if not (0 <= start < end <= len(text)):
+        return None
+    return {
+        "ok": True,
+        "matched": True,
+        "start": start,
+        "end": end,
+        "score": numeric_score,
+        "ambiguous": ambiguous,
+    }
+
+
+def _warn_fallback(backend: str, exc: Exception) -> None:
+    """Graceful degradation stays, but silently 5x-slower scans do not."""
+    global _fallback_warned
+    if not _fallback_warned:
+        _fallback_warned = True
+        print(
+            f"cluxion-supercoder: {backend} index backend failed ({type(exc).__name__}: {exc}); "
+            "falling back to the slower python scanner for this process",
+            file=sys.stderr,
+        )
+
+
+def _forced_backend() -> str | None:
+    forced = os.environ.get(INDEX_BACKEND_ENV, "").strip().lower()
+    return forced if forced in _BACKENDS else None
+
+
+def _invoke_native(command: str, payload: dict[str, object]) -> dict[str, object]:
+    native = _load_native()
+    if native is None:
+        raise RuntimeError("native backend forced but supercoder_index_native is not importable")
+    raw = native.run(command, json.dumps(payload, ensure_ascii=False))
+    return _parse_backend_json(raw, command)
+
+
+def _invoke_subprocess(command: str, payload: dict[str, object]) -> dict[str, object]:
+    binary = _binary()
+    if shutil.which(binary) is None:
+        raise RuntimeError("supercoder-index binary not found")
+    completed = subprocess.run(
+        [binary, command],
+        input=json.dumps(payload, ensure_ascii=False),
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+        timeout=30.0,
+    )
+    if completed.returncode != 0:
+        stdout = completed.stdout.strip()
+        try:
+            error = json.loads(stdout).get("error", "")
+        except (json.JSONDecodeError, AttributeError):
+            error = ""
+        raise RuntimeError(error or completed.stderr.strip() or f"supercoder-index {command} failed")
+    parsed = _parse_backend_json(completed.stdout, command)
+    return parsed
+
+
+def _parse_backend_json(raw: str, command: str) -> dict[str, object]:
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError(f"supercoder-index {command} returned invalid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"supercoder-index {command} returned non-object JSON")
+    return parsed
+
+
+def _collect_candidates(root: Path, *, extensions: tuple[str, ...]) -> list[str]:
+    candidates: list[str] = []
+    for path in root.rglob("*"):
+        # Match Rust WalkDir: never follow file symlinks (is_file() would).
+        if path.is_symlink():
+            continue
+        if not path.is_file():
+            continue
+        if path.suffix not in extensions:
+            continue
+        rel = path.relative_to(root)
+        # skip within-tree only, not root's own ancestry — parity with rust filter_entry (basename pruning)
+        if any(part in SKIP_DIRS for part in rel.parts):
+            continue
+        candidates.append(str(rel))
+    candidates.sort()
+    return candidates
+
+
+def count_scan_candidates(
+    root: Path,
+    *,
+    extensions: tuple[str, ...] = DEFAULT_EXTENSIONS,
+) -> int:
+    """Return how many files match scan_repo criteria before the max_files cap."""
+    return len(_collect_candidates(root, extensions=extensions))
+
+
+def _py_scan(
+    root: Path,
+    *,
+    max_files: int,
+    extensions: tuple[str, ...],
+) -> dict[str, object]:
+    from cluxion_agentplugin_supercoder.core.hash_patch import file_hash
+
+    candidates = _collect_candidates(root, extensions=extensions)
+    entries: list[dict[str, object]] = []
+    for rel in candidates[:max_files]:
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        entries.append(
+            {
+                "path": rel,
+                "file_hash": file_hash(text),
+                "total_lines": text.count("\n") + (1 if text else 0),
+            }
+        )
+    return {
+        "ok": True,
+        "entries": entries,
+        "count": len(entries),
+        "total_candidates": len(candidates),
+    }
+
+
+def _binary() -> str:
+    configured = os.environ.get(INDEX_BIN_ENV, "").strip()
+    if configured:
+        return configured
+    local = (
+        Path(__file__).resolve().parents[2] / "rust" / "supercoder_index" / "target" / "release" / "supercoder-index"
+    )
+    if local.exists():
+        return str(local)
+    return "supercoder-index"
+
+
+__all__ = [
+    "DEFAULT_EXTENSIONS",
+    "DEFAULT_MAX_FILES",
+    "INDEX_BACKEND_ENV",
+    "INDEX_BIN_ENV",
+    "count_scan_candidates",
+    "fuzzy_span_result",
+    "index_available",
+    "resolve_backend",
+    "scan_repo",
+    "scan_repo_result",
+]

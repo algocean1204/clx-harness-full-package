@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import json
+import tomllib
+from pathlib import Path
+
+
+def test_root_plugin_artifacts_are_version_synced() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    version = pyproject["project"]["version"]
+    lock = tomllib.loads(Path("uv.lock").read_text(encoding="utf-8"))
+
+    claude = json.loads(Path(".claude-plugin/plugin.json").read_text(encoding="utf-8"))
+    codex = json.loads(Path(".codex-plugin/plugin.json").read_text(encoding="utf-8"))
+
+    assert claude == codex
+    assert claude["name"] == "clx-hermes-call"
+    assert claude["version"] == version
+    # Python distribution name stays cluxion-hermes-call-cli (compat).
+    assert _locked_project_version(lock, "cluxion-hermes-call-cli") == version
+    assert claude["commands"] == "./commands"
+    assert claude["skills"] == "./skills"
+    assert Path("commands/hermes-call.md").is_file()
+    skill = Path("skills/clx-hermes-call/SKILL.md")
+    assert skill.is_file()
+    assert "name: clx-hermes-call" in skill.read_text(encoding="utf-8")
+    assert not Path("skills/hermes-call").exists()
+
+
+def test_no_legacy_surface_adapter_forks_exist() -> None:
+    assert not Path("adapters").exists()
+
+
+def _locked_project_version(lock: dict[str, object], package_name: str) -> str | None:
+    packages = lock.get("package", [])
+    if not isinstance(packages, list):
+        return None
+    for package in packages:
+        if isinstance(package, dict) and package.get("name") == package_name:
+            version = package.get("version")
+            return str(version) if version is not None else None
+    return None
+
+
+def test_marketplace_manifest_is_version_synced() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    version = pyproject["project"]["version"]
+
+    marketplace = json.loads(Path(".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
+    assert marketplace["name"] == "clx-hermes-call"
+    assert marketplace["plugins"][0]["name"] == "clx-hermes-call"
+    assert marketplace["plugins"][0]["version"] == version
+    assert marketplace["plugins"][0]["source"] == "./"

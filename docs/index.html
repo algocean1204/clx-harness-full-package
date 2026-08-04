@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clx 에이전트 하네스 — AI 에이전트 셋, 규칙은 하나</title>
+<meta name="description" content="Claude Code · Codex · Grok Build를 단일 코어 규칙으로 묶는 오픈소스 멀티 CLI 에이전트 하네스 클린 배포판. 개인정보 0, macOS·Windows 1급 지원.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://algocean1204.github.io/clx-harness-full-package/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="clx 에이전트 하네스 — AI 에이전트 셋, 규칙은 하나">
+<meta property="og:description" content="Claude Code · Codex · Grok Build를 단일 코어 규칙으로 묶는 오픈소스 클린 배포판. 개인정보 0, macOS·Windows 1급 지원.">
+<meta property="og:url" content="https://algocean1204.github.io/clx-harness-full-package/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234F46E5'/%3E%3Cpath d='M11 11l-4 5 4 5M21 11l4 5-4 5M18 9l-4 14' fill='none' stroke='%23FFFFFF' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#main">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">
+        <span class="brand-name">clx-harness</span>
+        <span class="brand-sub" data-i18n="brandSub">full-package</span>
+      </span>
+    </a>
+
+    <nav class="site-nav" aria-label="섹션" data-i18n-attr="aria-label" data-i18n="navAria">
+      <a href="#ecosystem" data-i18n="navEco">생태계</a>
+      <a href="#structure" data-i18n="navTree">구조</a>
+      <a href="#catalog" data-i18n="navCat">카탈로그</a>
+      <a href="#install" data-i18n="navIns">설치</a>
+    </nav>
+
+    <div class="lang">
+      <span class="lang-icon" aria-hidden="true" data-icon="languages"></span>
+      <div class="seg" id="langSeg" role="group" aria-label="Language / 언어 / 语言">
+        <span class="seg-thumb" aria-hidden="true"></span>
+        <button type="button" class="seg-btn" data-lang="ko" lang="ko">한국어</button>
+        <button type="button" class="seg-btn" data-lang="en" lang="en">EN</button>
+        <button type="button" class="seg-btn" data-lang="zh" lang="zh-Hans">中文</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- 1. Hero -->
+  <section class="hero" aria-labelledby="heroTitle">
+    <div class="wrap">
+      <p class="eyebrow" data-i18n="heroEyebrow">오픈소스 멀티 CLI 에이전트 하네스</p>
+      <h1 id="heroTitle" data-i18n="heroTitle">AI 에이전트 셋, 규칙은 하나.</h1>
+      <p class="lede" data-i18n="heroLede">Claude Code · Codex · Grok Build를 한 규칙으로 굴리려는 개발자를 위한 클린 배포판. 클론하고 설치하면 끝 — 개인정보 0, 외부 위임은 언제나 옵트인.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#ecosystem"><span data-icon="boxes" aria-hidden="true"></span><span data-i18n="heroCta1">생태계 살펴보기</span></a>
+        <a class="btn btn-ghost" href="#install"><span data-icon="download" aria-hidden="true"></span><span data-i18n="heroCta2">바로 설치하기</span></a>
+      </div>
+      <ul class="hero-badges">
+        <li><span data-icon="scale" aria-hidden="true"></span><span data-i18n="heroBadge1">MIT 라이선스</span></li>
+        <li><span data-icon="pull-request" aria-hidden="true"></span><span data-i18n="heroBadge2">PR · Issue 환영</span></li>
+        <li><span data-icon="laptop" aria-hidden="true"></span><span data-i18n="heroBadge3">macOS · Windows 1급 지원</span></li>
+      </ul>
+      <ul class="facts">
+        <li><span class="fact-icon" data-icon="terminal" aria-hidden="true"></span><strong>3</strong><span data-i18n="fact1">CLI 하네스</span></li>
+        <li><span class="fact-icon" data-icon="shield" aria-hidden="true"></span><strong>12</strong><span data-i18n="fact2">코어 규칙</span></li>
+        <li><span class="fact-icon" data-icon="plug" aria-hidden="true"></span><strong>32</strong><span data-i18n="fact3">스킬 28 · 플러그인 4</span></li>
+        <li><span class="fact-icon" data-icon="lock" aria-hidden="true"></span><strong>0</strong><span data-i18n="fact4">시크릿 · 개인정보</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2. Ecosystem -->
+  <section id="ecosystem" class="wrap section" aria-labelledby="ecoTitle">
+    <div class="section-head">
+      <span class="section-icon" data-icon="boxes" aria-hidden="true"></span>
+      <div>
+        <p class="kicker" data-i18n="ecoKicker">01 — 생태계</p>
+        <h2 id="ecoTitle" data-i18n="ecoTitle">저장소 3개 + 내 머신</h2>
+      </div>
+    </div>
+
+    <div class="eco-canvas" id="ecoCanvas">
+      <svg class="eco-links" id="ecoLinks" aria-hidden="true" focusable="false"></svg>
+      <p class="sr-only" data-i18n="ecoFlowSr">흐름: 비공개 스킬 원본 저장소의 스킬이 clx-harness-full-package 배포판에 벤더링되고, 설치기가 이를 로컬 설정으로 펼친 뒤, 로컬 설정이 개인 백업 저장소로 미러링됩니다.</p>
+
+      <ol class="eco-grid">
+        <li class="node node-private" id="eco-1">
+          <div class="node-head">
+            <span class="node-icon" data-icon="library" aria-hidden="true"></span>
+            <span class="badge badge-private"><span data-icon="lock" aria-hidden="true"></span><span data-i18n="badgePrivate">비공개</span></span>
+          </div>
+          <h3 class="node-name" data-i18n="nodeSkillbookName">비공개 스킬 원본 저장소</h3>
+          <p class="node-role" data-i18n="nodeSkillbook">커스텀 스킬·플러그인 모노레포. 배포판에 실리는 스킬의 원본입니다.</p>
+          <p class="node-meta" data-i18n="nodeSkillbookMeta">스킬 28 · 플러그인 4</p>
+        </li>
+
+        <li class="node node-public" id="eco-2">
+          <div class="node-head">
+            <span class="node-icon" data-icon="package" aria-hidden="true"></span>
+            <span class="badge badge-public"><span data-icon="globe" aria-hidden="true"></span><span data-i18n="badgePublic">공개</span></span>
+          </div>
+          <h3 class="node-name">clx-harness-full-package</h3>
+          <p class="node-role" data-i18n="nodeHermess">이 저장소 — 개인정보를 걷어낸 클린 배포판. 새 머신에 그대로 복제해 같은 하네스를 재현합니다.</p>
+          <p class="node-meta" data-i18n="nodeHermessMeta">MIT · PR 환영</p>
+        </li>
+
+        <li class="node node-live" id="eco-3">
+          <div class="node-head">
+            <span class="node-icon" data-icon="terminal" aria-hidden="true"></span>
+            <span class="badge badge-live" data-i18n="badgeLocal">로컬</span>
+          </div>
+          <h3 class="node-name">~/.claude · ~/.codex · ~/.agents</h3>
+          <p class="node-role" data-i18n="nodeLive">설치기가 만드는 실사용 설정. 에이전트가 실제로 읽는 자리입니다.</p>
+          <p class="node-meta" data-i18n="nodeLiveMeta">install.sh · install.ps1</p>
+        </li>
+
+        <li class="node node-private node-opaque" id="eco-4">
+          <div class="node-head">
+            <span class="node-icon" data-icon="archive" aria-hidden="true"></span>
+            <span class="badge badge-private"><span data-icon="lock" aria-hidden="true"></span><span data-i18n="badgePrivate">비공개</span></span>
+          </div>
+          <h3 class="node-name" data-i18n="nodeBackupName">비공개 설정 백업 저장소</h3>
+          <p class="node-role" data-i18n="nodeBackup">개인 백업. 내부 구조는 공개하지 않습니다.</p>
+          <p class="node-meta" data-i18n="nodeBackupMeta">구조 비공개</p>
+        </li>
+      </ol>
+    </div>
+
+    <p class="note"><span data-icon="info" aria-hidden="true"></span><span data-i18n="ecoNote">배포판에는 시크릿·개인 메모리·세션·런타임 상태가 들어있지 않습니다. git 원격도 설정하지 않고, 어디에도 자동으로 푸시하지 않습니다.</span></p>
+  </section>
+
+  <!-- 3. Structure explorer -->
+  <section id="structure" class="wrap section" aria-labelledby="treeTitle">
+    <div class="section-head">
+      <span class="section-icon" data-icon="folder" aria-hidden="true"></span>
+      <div>
+        <p class="kicker" data-i18n="treeKicker">02 — 구조</p>
+        <h2 id="treeTitle" data-i18n="treeTitle">저장소 구조 탐색기</h2>
+      </div>
+    </div>
+    <p class="section-lede" data-i18n="treeLede">공개 배포판의 실제 트리입니다. 폴더를 눌러 펼쳐 보세요.</p>
+
+    <div class="tree-shell">
+      <div class="tree-bar">
+        <span class="tree-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="tree-path mono">clx-harness-full-package</span>
+        <span class="tree-actions">
+          <button type="button" class="btn btn-small" id="treeExpand" data-i18n="treeExpand">모두 펼치기</button>
+          <button type="button" class="btn btn-small" id="treeCollapse" data-i18n="treeCollapse">모두 접기</button>
+        </span>
+      </div>
+      <div class="tree-scroll">
+        <ul class="tree" id="tree" role="tree" aria-labelledby="treeTitle"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Catalog -->
+  <section id="catalog" class="wrap section" aria-labelledby="catTitle">
+    <div class="section-head">
+      <span class="section-icon" data-icon="plug" aria-hidden="true"></span>
+      <div>
+        <p class="kicker" data-i18n="catKicker">03 — 카탈로그</p>
+        <h2 id="catTitle" data-i18n="catTitle">스킬 · 플러그인 카탈로그</h2>
+      </div>
+    </div>
+    <p class="section-lede" data-i18n="catLede">비공개 스킬 원본 저장소가 출처입니다.</p>
+
+    <div class="filters">
+      <div class="search">
+        <span class="search-icon" data-icon="search" aria-hidden="true"></span>
+        <label class="sr-only" for="catSearch" data-i18n="catSearchLabel">스킬 검색</label>
+        <input type="search" id="catSearch" autocomplete="off" spellcheck="false" placeholder="이름이나 기능으로 검색…" data-i18n-attr="placeholder" data-i18n="catSearchPlaceholder">
+      </div>
+      <div class="chips" id="catChips" role="group" aria-label="카테고리 필터" data-i18n-attr="aria-label" data-i18n="filterAria"></div>
+    </div>
+
+    <p class="result-count" id="catCount" role="status" aria-live="polite"></p>
+    <ul class="cards" id="catGrid"></ul>
+    <div class="empty" id="catEmpty" hidden>
+      <p data-i18n="catEmpty">조건에 맞는 항목이 없습니다.</p>
+      <button type="button" class="btn btn-small" id="catClear" data-i18n="catClear">필터 초기화</button>
+    </div>
+  </section>
+
+  <!-- 5. Install -->
+  <section id="install" class="wrap section" aria-labelledby="insTitle">
+    <div class="section-head">
+      <span class="section-icon" data-icon="download" aria-hidden="true"></span>
+      <div>
+        <p class="kicker" data-i18n="insKicker">04 — 설치</p>
+        <h2 id="insTitle" data-i18n="insTitle">설치 흐름</h2>
+      </div>
+    </div>
+    <p class="section-lede" data-i18n="insLede">클론은 공통, 활성화는 OS별로 자동 분기됩니다.</p>
+
+    <div class="tabs" role="tablist" aria-label="OS">
+      <button type="button" role="tab" id="tab-mac" aria-controls="panel-mac" aria-selected="true" class="tab">
+        <span data-icon="laptop" aria-hidden="true"></span><span>macOS / Linux</span>
+      </button>
+      <button type="button" role="tab" id="tab-win" aria-controls="panel-win" aria-selected="false" tabindex="-1" class="tab">
+        <span data-icon="monitor" aria-hidden="true"></span><span>Windows</span>
+      </button>
+    </div>
+
+    <div id="panel-mac" role="tabpanel" aria-labelledby="tab-mac" class="panel">
+      <ol class="steps" id="stepsMac"></ol>
+    </div>
+    <div id="panel-win" role="tabpanel" aria-labelledby="tab-win" class="panel" hidden>
+      <ol class="steps" id="stepsWin"></ol>
+    </div>
+
+    <p class="note"><span data-icon="shield" aria-hidden="true"></span><span data-i18n="insNote">두 설치기 모두 인증·크리덴셜·Keychain을 건드리지 않고, git 원격을 설정하지 않습니다.</span></p>
+  </section>
+
+  <!-- 6. CTA -->
+  <section id="cta" class="wrap section" aria-labelledby="ctaTitle">
+    <div class="cta-card">
+      <span class="cta-icon" data-icon="pull-request" aria-hidden="true"></span>
+      <h2 id="ctaTitle" data-i18n="ctaTitle">같이 다듬어 주세요</h2>
+      <p data-i18n="ctaBody">MIT 라이선스입니다. 새 머신에 복제해 쓰고, 고칠 곳이 보이면 PR이나 이슈로 알려주세요.</p>
+      <div class="codebox cta-clone"><pre><code>git clone https://github.com/algocean1204/clx-harness-full-package.git</code></pre><button type="button" class="copy-btn" aria-live="polite" aria-label="복사: git clone" data-i18n="copyBtn">복사</button></div>
+      <div class="cta-actions">
+        <a class="btn btn-primary" href="https://github.com/algocean1204/clx-harness-full-package">
+          <span data-icon="github" aria-hidden="true"></span><span data-i18n="ctaRepo">저장소 열기</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/algocean1204/clx-harness-full-package/issues">
+          <span data-icon="pull-request" aria-hidden="true"></span><span data-i18n="ctaIssues">이슈 · PR</span>
+        </a>
+      </div>
+      <p class="cta-license"><span data-icon="scale" aria-hidden="true"></span><span data-i18n="ctaLicense">MIT License</span></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <p>© 2026 algocean1204</p>
+    <p data-i18n="footerNote">개인 백업 저장소의 내부 구조는 의도적으로 공개하지 않습니다.</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

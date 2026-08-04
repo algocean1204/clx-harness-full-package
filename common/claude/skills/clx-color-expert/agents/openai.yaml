@@ -1,0 +1,3 @@
+interface:
+  display_name: "Clx Color Expert"
+  short_description: "Analyze OKLCH, gamut, contrast, and color systems"

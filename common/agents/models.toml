@@ -1,0 +1,41 @@
+# Model registry — SINGLE SOURCE OF TRUTH for model ids and reasoning efforts.
+# A role whose CLI is not installed is simply never used: /grok, /gpt, and /claude check availability
+# first and fall back to native execution. Delete or ignore roles you have no CLI for.
+# Config files, guides, and commands reference ROLES here; they never hardcode model names.
+# Change ONLY via /clx-model, or from the setup-ui page (both validate against the live catalog).
+#
+# A model the USER names for a specific call always wins for that call. These pins are only the
+# default used when no model was named — they are never silently upgraded to something "better".
+#
+# effort policy: the highest tier the backend serves, EXCLUDING any tier that self-delegates
+# (Codex "ultra" spawns its own subtasks — that collides with core rule 2's one-bounded-unit rule).
+# owner_pinned = true means the rank is a deliberate choice: model-registry-check.py still FAILs on
+# an id or effort the backend does not serve, but stops nagging that a higher-ranked sibling exists.
+# Drift is detected, not assumed: ~/.claude/hooks/model-registry-check.py asks each installed
+# backend what it serves. Run it via /clx-model, config-doctor, or the setup-ui page.
+
+[roles.grok_exec]        # /grok delegation target (Grok Build CLI)
+model = "grok-4.5"
+effort = "high"
+transports = ["clx-grok-delegate (git-repo execution)", "clx-grok-call (one-shot)"]
+
+[roles.gpt_exec]         # /gpt delegation target (Codex CLI)
+model = "gpt-5.6-luna"
+effort = "max"
+owner_pinned = true      # tier chosen on purpose; name a model in chat to override one call
+transports = ["clx-ai-delegate codex"]
+
+[roles.claude_exec]      # /claude delegation target (Claude Code CLI)
+model = "opus"
+effort = "max"
+transports = ["clx-ai-delegate claude"]
+
+[roles.code_delegate]    # code/security subagent tier (Agent tool `model` param)
+model = "opus"
+effort = "max"
+
+[roles.test_agent]       # test/QA subagent tier
+model = "opus"
+effort = "max"
+owner_pinned = true      # top tier for every subagent: this harness ranks quality
+                         # above token cost, and a QA agent that misses a defect costs more

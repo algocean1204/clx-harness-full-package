@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ClaudeTalkToFigma": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["--yes", "--package", "claude-talk-to-figma-mcp@1.0.0", "claude-talk-to-figma-mcp-server"]
+    }
+  }
+}

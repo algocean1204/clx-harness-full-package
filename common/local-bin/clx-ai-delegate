@@ -1,0 +1,280 @@
+#!/usr/bin/env python3
+"""Run one bounded Codex or Claude Code unit inside a Git repository."""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+PREFLIGHT_FAILURE = 126
+INCOMPLETE_RESULT = 125
+
+
+def fail(message, code=PREFLIGHT_FAILURE):
+    print(f"clx-ai-delegate: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def registry_role(home, role):
+    path = home / ".agents" / "models.toml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        fail(f"model registry is unavailable: {path}")
+    match = re.search(
+        r"(?ms)^\[roles\." + re.escape(role) + r"\]\s*(?:#[^\r\n]*)?$\n(?P<body>.*?)(?=^\[|\Z)",
+        text,
+    )
+    if not match:
+        fail(f"model registry role is missing: {role}")
+    values = {}
+    for key in ("model", "effort"):
+        value = re.search(r'(?m)^\s*' + key + r'\s*=\s*"([^"\r\n]+)"\s*(?:#.*)?$', match.group("body"))
+        if not value:
+            fail(f"model registry role has no valid {key}: {role}")
+        values[key] = value.group(1)
+    return values["model"], values["effort"]
+
+
+def git_root(path):
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        fail(f"repository path is unavailable: {path}")
+    if not resolved.is_dir():
+        fail(f"repository path is not a directory: {resolved}")
+    probe = subprocess.run(
+        ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode:
+        fail(f"target is not a Git repository: {resolved}")
+    return Path(probe.stdout.strip()).resolve()
+
+
+def acquire_lock(repo):
+    root = Path(tempfile.gettempdir()) / "clx-ai-delegate-locks"
+    root.mkdir(mode=0o700, exist_ok=True)
+    path = root / (hashlib.sha256(str(repo).encode()).hexdigest() + ".lock")
+    handle = path.open("a+b")
+    if os.name == "nt":
+        import msvcrt
+
+        if path.stat().st_size == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            fail(f"another external executor owns this repository: {repo}")
+    else:
+        import fcntl
+
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fail(f"another external executor owns this repository: {repo}")
+    return handle
+
+
+def run_bounded(command, repo, env, timeout):
+    options = {
+        "cwd": str(repo),
+        "env": env,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
+    if os.name == "nt":
+        options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        options["start_new_session"] = True
+    process = subprocess.Popen(command, **options)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        print(f"clx-ai-delegate: timed out after {timeout}s", file=sys.stderr)
+        return 124, "", ""
+    return process.returncode, stdout, stderr
+
+
+def normalize_after_codex(home):
+    normalizer = home / ".claude" / "hooks" / "codex-browser-normalize.py"
+    if normalizer.is_file():
+        subprocess.run([sys.executable, str(normalizer)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def run_codex(args, repo, home, model, effort, env, timeout):
+    binary = shutil.which("codex")
+    if not binary:
+        fail("codex CLI is not installed")
+    output = tempfile.NamedTemporaryFile(prefix="clx-codex-result-", delete=False)
+    output_path = Path(output.name)
+    output.close()
+    command = [
+        binary,
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "workspace-write",
+        "-C",
+        str(repo),
+        "-m",
+        model,
+        "-c",
+        f'model_reasoning_effort="{effort}"',
+        "-c",
+        'approval_policy="never"',
+        "-o",
+        str(output_path),
+        args.prompt,
+    ]
+    try:
+        code, stdout, stderr = run_bounded(command, repo, env, timeout)
+        normalize_after_codex(home)
+        if code:
+            if stdout.strip():
+                print(stdout.strip(), file=sys.stderr)
+            if stderr.strip():
+                print(stderr.strip(), file=sys.stderr)
+            return code
+        try:
+            result = output_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            result = ""
+        if not result:
+            print("clx-ai-delegate: Codex returned no final message", file=sys.stderr)
+            return INCOMPLETE_RESULT
+        print(result)
+        return 0
+    finally:
+        output_path.unlink(missing_ok=True)
+
+
+def run_claude(args, repo, model, effort, env, timeout):
+    binary = shutil.which("claude")
+    if not binary:
+        fail("claude CLI is not installed")
+    settings = {}
+    tools = "Edit,Glob,Grep,Read,Write"
+    if os.name != "nt":
+        tools = "Bash," + tools
+        settings["sandbox"] = {
+            "enabled": True,
+            "autoAllowBashIfSandboxed": True,
+            "excludedCommands": [],
+            "allowUnsandboxedCommands": False,
+        }
+    setting_file = tempfile.NamedTemporaryFile(
+        prefix="clx-claude-settings-", suffix=".json", mode="w", encoding="utf-8", delete=False
+    )
+    json.dump(settings, setting_file)
+    setting_file.close()
+    settings_path = Path(setting_file.name)
+    boundary = (
+        f"External executor boundary: work only inside {repo}. Do not invoke another AI CLI, "
+        "commit, push, alter authentication, or access agent session/runtime state."
+    )
+    command = [
+        binary,
+        "-p",
+        args.prompt,
+        "--model",
+        model,
+        "--effort",
+        effort,
+        "--no-session-persistence",
+        "--no-chrome",
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--setting-sources",
+        "project",
+        "--settings",
+        str(settings_path),
+        "--permission-mode",
+        "acceptEdits",
+        "--tools",
+        tools,
+        "--disable-slash-commands",
+        "--append-system-prompt",
+        boundary,
+        "--output-format",
+        "json",
+    ]
+    try:
+        code, stdout, stderr = run_bounded(command, repo, env, timeout)
+        if code:
+            if stdout.strip():
+                print(stdout.strip(), file=sys.stderr)
+            if stderr.strip():
+                print(stderr.strip(), file=sys.stderr)
+            return code
+        try:
+            payload = json.loads(stdout)
+            result = payload.get("result", "").strip()
+        except (AttributeError, json.JSONDecodeError):
+            result = ""
+            payload = {"is_error": True}
+        if payload.get("is_error") or not result:
+            print("clx-ai-delegate: Claude returned an incomplete or error result", file=sys.stderr)
+            return INCOMPLETE_RESULT
+        print(result)
+        return 0
+    finally:
+        settings_path.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("provider", choices=("codex", "claude"))
+    parser.add_argument("repo", type=Path)
+    parser.add_argument("-p", "--prompt", required=True)
+    parser.add_argument("--model")
+    parser.add_argument("--effort")
+    parser.add_argument("--timeout", type=int)
+    args = parser.parse_args()
+
+    if os.environ.get("CLX_EXTERNAL_EXECUTOR"):
+        fail("recursive external delegation is forbidden")
+    repo = git_root(args.repo)
+    lock = acquire_lock(repo)
+    home = Path(os.environ.get("HOME") or Path.home()).resolve()
+    role = "gpt_exec" if args.provider == "codex" else "claude_exec"
+    default_model, default_effort = registry_role(home, role)
+    model = args.model or default_model
+    effort = args.effort or default_effort
+    if not re.fullmatch(r"[A-Za-z0-9._+:/@-]+", model) or not re.fullmatch(r"[A-Za-z0-9_-]+", effort):
+        fail("model or effort override is invalid")
+    timeout = args.timeout or int(os.environ.get("CLX_AI_TIMEOUT_SECONDS", "900"))
+    if timeout < 1 or timeout > 3600:
+        fail("timeout must be between 1 and 3600 seconds")
+    env = os.environ.copy()
+    env["CLX_EXTERNAL_EXECUTOR"] = args.provider
+    if args.provider == "codex":
+        return run_codex(args, repo, home, model, effort, env, timeout)
+    return run_claude(args, repo, model, effort, env, timeout)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

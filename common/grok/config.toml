@@ -1,0 +1,3 @@
+# Grok CLI portable baseline. This favors compatibility in restricted desktop runners.
+[sandbox]
+profile = "off"

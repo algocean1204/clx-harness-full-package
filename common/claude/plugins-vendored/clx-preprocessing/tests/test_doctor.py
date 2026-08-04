@@ -1,0 +1,240 @@
+"""Tests for embedded doctor (determinism + cross-cutting checks)."""
+
+import concurrent.futures
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from cluxion_agentplugin_preprocessing.doctor import (
+    DoctorResult,
+    render_json,
+    run_doctor,
+)
+from cluxion_agentplugin_preprocessing.doctor.probes import PROBES
+
+
+def _catalog_path() -> Path:
+    import importlib.resources
+
+    pkg = "cluxion_agentplugin_preprocessing.doctor"
+    return Path(str(importlib.resources.files(pkg).joinpath("catalog.json")))
+
+
+def test_run_doctor_returns_result_and_deterministic():
+    cat = _catalog_path()
+    r1 = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=cat,
+        probes=PROBES,
+        plugin="preprocessing",
+        version="0.3.7",
+    )
+    assert isinstance(r1, DoctorResult)
+    j1 = render_json(r1)
+    r2 = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=cat,
+        probes=PROBES,
+        plugin="preprocessing",
+        version="0.3.7",
+    )
+    j2 = render_json(r2)
+    assert j1 == j2  # byte identical
+    # sorted by severity then id
+    ids = [c.check_id for c in r1.checks]
+    assert len(ids) > 0
+
+
+def test_cross_cutting_checks_present():
+    cat = _catalog_path()
+    result = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=cat,
+        probes=PROBES,
+        plugin="preprocessing",
+        version="0.3.7",
+    )
+    statuses = {c.check_id: c.status for c in result.checks}
+    for key in ("hermes_on_path", "entry_point_registered", "toolset_valid"):
+        assert key in statuses
+        assert statuses[key] in ("pass", "warn", "fail", "skip")
+
+
+def test_new_probes_non_skip():
+    cat = _catalog_path()
+    result = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=cat,
+        probes=PROBES,
+        plugin="preprocessing",
+        version="0.3.7",
+    )
+    statuses = {c.check_id: c.status for c in result.checks}
+    for key in (
+        "psutil_importable",
+        "json_serialization_deterministic",
+        "runtime_binary_accessible",
+        "clarification_answers_present",
+        "guard_state_not_stale",
+        "temp_file_cleanup",
+    ):
+        assert key in statuses
+        assert statuses[key] in ("pass", "warn", "fail")  # non-skip
+
+
+def test_run_doctor_parallelizes_slow_probes(tmp_path: Path):
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        json.dumps(
+            [
+                {
+                    "check_id": f"slow_{idx}",
+                    "category": "c",
+                    "severity": "low",
+                    "what_it_checks": "w",
+                    "failure_symptom": "f",
+                    "likely_causes": [],
+                    "fix_steps": [],
+                    "change_robust": "r",
+                }
+                for idx in range(4)
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def slow(_ctx):
+        time.sleep(0.2)
+        return "pass", "ok"
+
+    started = time.perf_counter()
+    result = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=catalog,
+        probes={f"slow_{idx}": slow for idx in range(4)},
+        plugin="preprocessing",
+        version="0.3.28",
+    )
+
+    assert result.ok is True
+    assert time.perf_counter() - started < 0.45
+
+
+def test_cli_doctor_json_is_stdout_only_json():
+    completed = subprocess.run(
+        [sys.executable, "-m", "cluxion_agentplugin_preprocessing.cli", "doctor", "--json"],
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert "checks" in payload
+    assert completed.stderr == ""
+
+
+def test_real_failure_mode_probes_present():
+    cat = _catalog_path()
+    result = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=cat,
+        probes=PROBES,
+        plugin="preprocessing",
+        version="0.3.24",
+    )
+    statuses = {c.check_id: c.status for c in result.checks}
+    for key in (
+        "hermes_plugin_enabled",
+        "hermes_deliver_patch_status",
+        "dispatch_dir_writable",
+        "version_files_synced",
+    ):
+        assert key in statuses
+        assert statuses[key] in ("pass", "warn", "fail", "skip")
+
+
+def test_version_files_synced_skips_foreign_pyproject(tmp_path: Path):
+    # regression: doctor run from another python project's cwd compared that
+    # project's version against installed metadata and false-failed
+    from cluxion_agentplugin_preprocessing.doctor.framework import DoctorContext
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "some-other-package"\nversion = "0.2.31"\n',
+        encoding="utf-8",
+    )
+    ctx = DoctorContext(cwd=tmp_path, hermes_bin="hermes", run=lambda cmd: None)
+    status, detail = PROBES["version_files_synced"](ctx)
+    assert status == "skip"
+    assert detail == "repo files not present"
+
+
+def test_version_files_synced_passes_from_repo_root():
+    from cluxion_agentplugin_preprocessing.doctor.framework import DoctorContext
+
+    repo_root = Path(__file__).resolve().parents[1]
+    ctx = DoctorContext(cwd=repo_root, hermes_bin="hermes", run=lambda cmd: None)
+    status, detail = PROBES["version_files_synced"](ctx)
+    assert status == "pass", detail
+
+
+def test_probe_exception_becomes_fail():
+    def bad_probe(ctx):
+        raise RuntimeError("boom")
+
+    result = run_doctor(
+        cwd=Path.cwd(),
+        catalog_path=_catalog_path(),
+        probes={"hermes_on_path": bad_probe},
+        plugin="preprocessing",
+        version="0.3.7",
+    )
+    statuses = {c.check_id: c.status for c in result.checks}
+    assert statuses["hermes_on_path"] == "fail"
+
+
+def _writable_probes_failures(_: int) -> list:
+    # runs in a child process: concurrent doctors race on the shared data dirs
+    from cluxion_agentplugin_preprocessing.doctor.probes import PROBES
+
+    failures = []
+    for _round in range(25):
+        for probe_id in ("queue_store_dir_writable", "dispatch_dir_writable"):
+            status, detail = PROBES[probe_id](None)
+            if status != "pass":
+                failures.append((probe_id, status, detail))
+    return failures
+
+
+def test_writable_probes_survive_concurrent_doctors(tmp_path: Path, monkeypatch):
+    # regression: fixed '.doctor-probe' filename made 8 parallel doctors race
+    # on write/read/unlink (ENOENT + roundtrip mismatch)
+    monkeypatch.setenv("CLUXION_QUEUE_STORE_DIR", str(tmp_path / "queue"))
+    monkeypatch.setenv("CLUXION_PREPROCESS_DISPATCH_DIR", str(tmp_path / "dispatch"))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_writable_probes_failures, range(8)))
+    assert all(not failures for failures in results), results
+
+
+def test_env_var_consistency_reports_producer_consumer_dispatch_paths(tmp_path: Path, monkeypatch):
+    store = tmp_path / "queue"
+    monkeypatch.setenv("CLUXION_QUEUE_STORE_DIR", str(store))
+    monkeypatch.delenv("CLUXION_PREPROCESS_DISPATCH_DIR", raising=False)
+    monkeypatch.delenv("HERMES_CLUXION_DISPATCH_DIR", raising=False)
+
+    status, detail = PROBES["env_var_consistency"](None)
+    assert status == "pass"
+    assert "producer=" in detail
+    assert "consumer=" in detail
+    assert str(store / "dispatch") in detail
+
+
+def test_warn_only_is_ok():
+    # construct a result with only warn (no fail)
+    from cluxion_agentplugin_preprocessing.doctor.framework import CheckResult, DoctorResult
+
+    checks = (CheckResult(check_id="x", category="c", severity="medium", status="warn", detail="w"),)
+    r = DoctorResult(plugin="p", version="0.3.7", checks=checks)
+    assert r.ok is True

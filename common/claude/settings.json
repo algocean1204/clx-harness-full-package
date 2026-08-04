@@ -1,0 +1,205 @@
+{
+  "cleanupPeriodDays": 21,
+  "skillListingBudgetFraction": 0.02,
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(claude plugin list)",
+      "Bash(claude plugin list *)",
+      "mcp__Claude_Preview__preview_console_logs"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/credentials)",
+      "Write(~/.claude/security/**)",
+      "Edit(~/.claude/security/**)"
+    ]
+  },
+  "model": "sonnet",
+  "skillOverrides": {
+    "docx": "name-only",
+    "pptx": "name-only",
+    "xlsx": "name-only",
+    "pdf": "name-only"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/session-restore.py'"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/browser-audit.py' prune --days 10 >/dev/null",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/clx-first-run.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/intent-lock.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "create_goal|update_goal",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/block-goal-tools.py'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/guard-destructive.py'",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|.*browser.*|.*chrome.*|.*playwright.*|.*computer-use.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/browser-audit-hook.sh' pre",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/precompact-guard.sh'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/session-intent-archive.sh'",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|Task|mcp__filesystem__write_file|mcp__filesystem__edit_file|mcp__filesystem__move_file|mcp__filesystem__create_directory",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/auto-format.sh'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|.*browser.*|.*chrome.*|.*playwright.*|.*computer-use.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/browser-audit-hook.sh' post",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/selfcheck-stop.py'",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|.*browser.*|.*chrome.*|.*playwright.*|.*computer-use.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'__CLX_HOME__/.claude/hooks/browser-audit-hook.sh' post",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "'__CLX_HOME__/.claude/hooks/statusline.sh'"
+  },
+  "enabledPlugins": {
+    "ponytail@clx-vendored": true,
+    "skill-creator@clx-vendored": true,
+    "plugin-dev@clx-vendored": true,
+    "typescript-lsp@clx-vendored": true,
+    "pyright-lsp@clx-vendored": true,
+    "jdtls-lsp@clx-vendored": true,
+    "document-skills@clx-vendored": true,
+    "clx-supercoder@clx-vendored": true,
+    "clx-preprocessing@clx-vendored": true,
+    "clx-ultracode@clx-vendored": true,
+    "clx-hermes-call@clx-vendored": true
+  },
+  "extraKnownMarketplaces": {
+    "clx-vendored": {
+      "source": {
+        "source": "directory",
+        "path": "__CLX_HOME__/.claude/plugins-vendored"
+      }
+    }
+  },
+  "language": "ko",
+  "effortLevel": "xhigh",
+  "autoCompactWindow": 800000,
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "theme": "light-ansi",
+  "agentPushNotifEnabled": true
+}

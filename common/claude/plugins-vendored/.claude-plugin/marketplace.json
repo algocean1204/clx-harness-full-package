@@ -1,0 +1,116 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "clx-vendored",
+  "description": "Vendored public plugins for fully offline/native installs. Sources and licenses preserved verbatim; upstream links in credits/. Refresh via ./update-vendored.sh at the repo root.",
+  "owner": {
+    "name": "OWNER"
+  },
+  "plugins": [
+    {
+      "name": "ponytail",
+      "description": "Forces the laziest solution that works. YAGNI, stdlib first, one line over fifty.",
+      "source": "./ponytail",
+      "category": "productivity"
+    },
+    {
+      "name": "skill-creator",
+      "description": "Create new skills, improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, update or optimize an existing skill, run evals to test a skill, or benchmark skill performance with variance analysis.",
+      "author": { "name": "Anthropic", "email": "support@anthropic.com" },
+      "source": "./skill-creator",
+      "category": "development",
+      "homepage": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator"
+    },
+    {
+      "name": "plugin-dev",
+      "description": "Comprehensive toolkit for developing Claude Code plugins. Includes 7 expert skills covering hooks, MCP integration, commands, agents, and best practices. AI-assisted plugin creation and validation.",
+      "author": { "name": "Anthropic", "email": "support@anthropic.com" },
+      "source": "./plugin-dev",
+      "category": "development",
+      "homepage": "https://github.com/anthropics/claude-plugins-public/tree/main/plugins/plugin-dev"
+    },
+    {
+      "name": "typescript-lsp",
+      "description": "TypeScript/JavaScript language server for enhanced code intelligence",
+      "version": "1.0.0",
+      "author": { "name": "Anthropic", "email": "support@anthropic.com" },
+      "source": "./typescript-lsp",
+      "category": "development",
+      "strict": false,
+      "lspServers": {
+        "typescript": {
+          "command": "typescript-language-server",
+          "args": ["--stdio"],
+          "extensionToLanguage": {
+            ".ts": "typescript", ".tsx": "typescriptreact",
+            ".js": "javascript", ".jsx": "javascriptreact",
+            ".mts": "typescript", ".cts": "typescript",
+            ".mjs": "javascript", ".cjs": "javascript"
+          }
+        }
+      }
+    },
+    {
+      "name": "pyright-lsp",
+      "description": "Python language server (Pyright) for type checking and code intelligence",
+      "version": "1.0.0",
+      "author": { "name": "Anthropic", "email": "support@anthropic.com" },
+      "source": "./pyright-lsp",
+      "category": "development",
+      "strict": false,
+      "lspServers": {
+        "pyright": {
+          "command": "pyright-langserver",
+          "args": ["--stdio"],
+          "extensionToLanguage": { ".py": "python", ".pyi": "python" }
+        }
+      }
+    },
+    {
+      "name": "jdtls-lsp",
+      "description": "Java language server (Eclipse JDT.LS) for code intelligence",
+      "version": "1.0.0",
+      "author": { "name": "Anthropic", "email": "support@anthropic.com" },
+      "source": "./jdtls-lsp",
+      "category": "development",
+      "strict": false,
+      "lspServers": {
+        "jdtls": {
+          "command": "jdtls",
+          "extensionToLanguage": { ".java": "java" },
+          "startupTimeout": 120000
+        }
+      }
+    },
+    {
+      "name": "document-skills",
+      "description": "Collection of document processing suite including Excel, Word, PowerPoint, and PDF capabilities",
+      "source": "./document-skills",
+      "strict": false,
+      "skills": ["./skills/xlsx", "./skills/docx", "./skills/pptx", "./skills/pdf"]
+    },
+    {
+      "name": "clx-supercoder",
+      "description": "Universal agent coding harness plugin: cursor logic, safe patch, line budget, test gates. Slash-only (/supercoder).",
+      "source": "./clx-supercoder",
+      "category": "development"
+    },
+    {
+      "name": "clx-preprocessing",
+      "description": "Cluxion preprocessing: honesty, clarification, durable work queue, loop_auto, doctor checks.",
+      "source": "./clx-preprocessing",
+      "category": "productivity"
+    },
+    {
+      "name": "clx-ultracode",
+      "description": "Cluxion Effort-Ultracode: portable 3-agent adversarial consensus debate. Slash-only (/ultracode).",
+      "source": "./clx-ultracode",
+      "category": "development"
+    },
+    {
+      "name": "clx-hermes-call",
+      "description": "Delegate one-shot or bounded until-done work to the installed hermes-call CLI (CLI required; skill reports if absent).",
+      "source": "./clx-hermes-call",
+      "category": "productivity"
+    }
+  ]
+}

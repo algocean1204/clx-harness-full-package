@@ -1,0 +1,8 @@
+.DS_Store
+*.pyc
+__pycache__/
+*.log
+
+# internal working briefs must never be published (private backup bans them outright)
+.grok-briefs/
+.codex-briefs/

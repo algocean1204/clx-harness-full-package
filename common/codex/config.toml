@@ -1,0 +1,70 @@
+# Codex — portable config subset (sanitized for distribution).
+#
+# The owner's live config.toml also carries host/personal infrastructure that is
+# intentionally stripped here: ChatGPT.app / Codex Computer Use app-bundle paths,
+# localhost Hermes/xAI proxy providers, cmux runtime state, and local custom-plugin
+# marketplaces. Add your own model provider, auth, and MCP servers locally.
+
+approval_policy = "on-request"
+model = "gpt-5.6-sol"
+model_provider = "openai"
+model_reasoning_effort = "xhigh"
+service_tier = "fast"
+personality = "pragmatic"
+sandbox_mode = "workspace-write"
+
+[features]
+hooks = true
+goals = true
+rmcp_client = true
+memories = false
+chronicle = false
+fast_mode = true
+js_repl = false
+
+[marketplaces.claude-plugins-official]
+source_type = "git"
+source = "https://github.com/anthropics/claude-plugins-official.git"
+
+[marketplaces.ponytail]
+source_type = "git"
+source = "https://github.com/DietrichGebert/ponytail.git"
+
+[marketplaces.anthropic-agent-skills]
+source_type = "git"
+source = "https://github.com/anthropics/skills.git"
+
+[plugins."code-review@claude-plugins-official"]
+enabled = true
+
+[plugins."context7@claude-plugins-official"]
+enabled = true
+
+[plugins."ponytail@ponytail"]
+enabled = true
+
+# Codex renders injected additionalContext, so large multi-skill bundles are kept
+# disabled here to protect the skills-description budget. All stay available in Claude Code.
+[plugins."document-skills@anthropic-agent-skills"]
+enabled = false
+
+[mcp_servers.figma]
+url = "https://mcp.figma.com/mcp"
+enabled = false
+
+# Public xAI Grok endpoint; supplies the key from the XAI_API_KEY env var (no key stored here).
+[model_providers.xai]
+name = "xAI Grok API (direct key)"
+base_url = "https://api.x.ai/v1"
+env_key = "XAI_API_KEY"
+wire_api = "responses"
+
+[memories]
+generate_memories = false
+use_memories = false
+
+# No-AI-attribution policy for commits/PRs (mirrors the shared core rule).
+[desktop]
+git-branch-prefix = "cod/"
+git-commit-instructions = "Do not leave any trace indicating that AI authored the change."
+git-pr-instructions = "Do not leave any trace indicating that AI authored the change."

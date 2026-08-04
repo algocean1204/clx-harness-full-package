@@ -1,0 +1,15 @@
+{
+  "name": "clx-preprocessing",
+  "description": "Cluxion agent plugins marketplace",
+  "owner": {
+    "name": "cluxion"
+  },
+  "plugins": [
+    {
+      "name": "clx-preprocessing",
+      "description": "Universal agent preprocessing: honesty gate, clarification, Rust work queue, resource admission.",
+      "version": "0.3.69",
+      "source": "./"
+    }
+  ]
+}

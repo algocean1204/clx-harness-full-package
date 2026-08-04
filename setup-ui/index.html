@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>clx 하네스 설치 현황</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --fg: #16181d; --muted: #656c7a;
+  --line: #e2e5ea; --accent: #2f6feb; --accent-fg: #ffffff; --accent-soft: #e8f0fe;
+  --ok: #1a7f45; --bad: #b3261e; --code: #f2f3f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161a; --card: #1c1f25; --fg: #e7e9ee; --muted: #9aa2b1;
+    --line: #2b2f37; --accent: #6ea8fe; --accent-fg: #10131a; --accent-soft: #223047;
+    --ok: #4ac07c; --bad: #ff7b72; --code: #101317;
+  }
+}
+/* an explicit choice outranks the OS preference in BOTH directions */
+:root[data-theme="dark"] {
+  --bg: #14161a; --card: #1c1f25; --fg: #e7e9ee; --muted: #9aa2b1;
+  --line: #2b2f37; --accent: #6ea8fe; --accent-fg: #10131a; --accent-soft: #223047;
+  --ok: #4ac07c; --bad: #ff7b72; --code: #101317;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px 20px 48px; background: var(--bg); color: var(--fg);
+  font: 15px/1.55 -apple-system, "Segoe UI", "Noto Sans KR", system-ui, sans-serif;
+  overflow-x: hidden;
+}
+header { max-width: 1100px; margin: 0 auto 20px; }
+.bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between; }
+h1 { margin: 0 0 4px; font-size: 1.375rem; letter-spacing: -0.012em; }
+.sub { color: var(--muted); font-size: 0.8125rem; }
+.prefs { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.seg button:hover:not([aria-pressed="true"]) { background: var(--accent-soft); color: var(--fg); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+main {
+  max-width: 1100px; margin: 0 auto; display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.card {
+  min-width: 0; background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px 16px;
+}
+.card.wide { grid-column: 1 / -1; }
+h2 { margin: 0 0 10px; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; }
+h2 .count { color: var(--muted); font-weight: 400; font-size: 0.8125rem; }
+ul { margin: 0; padding: 0; list-style: none; }
+li { padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 0.8125rem; }
+li:last-child { border-bottom: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 2px 10px; justify-content: space-between; align-items: baseline; }
+/* break-word, not anywhere: `anywhere` drops min-content to one glyph and the
+   key column collapses into a vertical stack of single characters. */
+.row .k { min-width: 0; overflow-wrap: break-word; }
+.row .v { color: var(--muted); font-size: 0.8125rem; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.scroll { max-height: 260px; overflow: auto; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+  font-size: 12px; overflow-wrap: anywhere;
+}
+pre {
+  margin: 0; padding: 10px 12px; background: var(--code); border: 1px solid var(--line);
+  border-radius: 8px; max-height: 320px; overflow: auto;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.big { font-size: 26px; font-weight: 600; }
+.empty { color: var(--muted); font-size: 0.8125rem; }
+.error {
+  max-width: 1100px; margin: 0 auto; padding: 16px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--bad); color: var(--bad);
+}
+
+/* ---- model switcher ---- */
+.detected { color: var(--muted); font-size: 0.8125rem; margin-bottom: 18px; }
+.role { padding: 14px 0 4px; }
+.role + .role { border-top: 1px solid var(--line); }
+.role-head {
+  display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline;
+  justify-content: space-between; margin-bottom: 10px;
+}
+.role-name { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; }
+/* the raw key stays visible — it is what /clx-model and models.toml call this row — but it is
+   secondary to a name you can read */
+.role-key {
+  font: 0.75rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted); margin-left: 6px;
+}
+.role-now { color: var(--fg); font-size: 0.8125rem; font-weight: 500; }
+.role-now .dim { color: var(--muted); font-weight: 400; }
+.field { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.field-label { color: var(--muted); font-size: 0.8125rem; min-width: 48px; }
+.chip {
+  appearance: none; font: inherit; font-size: 0.8125rem; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  border-radius: 10px; padding: 6px 12px; max-width: 244px; text-align: left;
+  transition: background-color .16s cubic-bezier(.22,1,.36,1),
+              border-color .16s cubic-bezier(.22,1,.36,1), color .16s cubic-bezier(.22,1,.36,1);
+}
+.chip:hover:not([aria-pressed="true"]) { background: var(--accent-soft); border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+/* the blurb was 10px at 75% opacity — the hardest thing on the page to read. Full-strength muted
+   at 12px, and on the selected chip a tint of the chip's own foreground rather than gray-on-blue. */
+.chip .note {
+  display: block; font-size: 0.75rem; color: var(--muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chip[aria-pressed="true"] .note { color: var(--accent-fg); opacity: .85; }
+/* narrow: the label keeps its own row, otherwise the first chip is indented past it and every
+   wrapped chip below starts at the edge — a ragged left that reads as broken */
+@media (max-width: 560px) {
+  .field-label { flex: 0 0 100%; }
+  .chip { max-width: 100%; }
+}
+/* transient only: the committed value lives in the role header, so this line is free to be silent
+   until something is actually happening */
+.status { margin-top: 10px; font-size: 0.8125rem; min-height: 1.3em; color: var(--muted); }
+.status:empty { min-height: 0; margin-top: 0; }
+.note-line { color: var(--muted); font-size: 0.8125rem; margin-top: 8px; }
+.footnotes {
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 0.75rem; display: grid; gap: 4px;
+}
+.busy { opacity: .6; }
+/* A theme switch is a global repaint, not state feedback — animating it means every chip runs a
+   colour transition at once, and a throttled or hidden tab freezes them part-way (the element then
+   sits on an intermediate colour indefinitely). Suppress transitions for the swap frame. */
+:root.theme-swap * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div>
+      <h1 id="title">clx 하네스 설치 현황</h1>
+      <div class="sub" id="meta">불러오는 중…</div>
+    </div>
+    <div class="prefs">
+      <div class="seg" id="langSeg" role="group" aria-label="Language"></div>
+      <div class="seg" id="themeSeg" role="group" aria-label="Theme"></div>
+    </div>
+  </div>
+</header>
+<main id="app"></main>
+
+<script>
+const app = document.getElementById("app");
+const meta = document.getElementById("meta");
+
+/* ------------------------------------------------------------------ i18n */
+const STR = {
+  ko: {
+    title: "clx 하네스 설치 현황", loading: "불러오는 중…",
+    metaFmt: function (t) { return "생성 시각 " + t + " · 모델은 이 페이지에서 바로 전환할 수 있습니다"; },
+    loadFail: "불러오기 실패",
+    lang: "한국어", langOther: "English",
+    themeSystem: "시스템", themeLight: "라이트", themeDark: "다크",
+    install: "설치 상태", installed: "설치됨", missing: "없음",
+    filesFmt: function (n) { return " · 파일 " + n + "개"; },
+    plugins: "플러그인", noPlugins: "활성 플러그인이 없습니다.",
+    skills: "스킬", noSkills: "스킬이 없습니다.",
+    hooks: "훅", hookEvents: function (n) { return n + "개 이벤트"; }, noHooks: "등록된 훅이 없습니다.",
+    library: "하네스 라이브러리", libraryNote: "~/.agents/harness-library 에 설치된 하네스",
+    userCtx: "user/ 개인 컨텍스트", noUserDir: "~/.agents/user 가 없습니다.",
+    noFiles: "파일이 없습니다.", namesOnly: "파일 이름만 표시하며 내용은 읽지 않습니다.",
+    countFmt: function (n) { return n + "개"; }, filesCount: function (n) { return n + "개 파일"; },
+    models: "모델 전환", modelsRaw: "models.toml (원본)", noModels: "~/.agents/models.toml 이 없습니다.",
+    doctor: "config-doctor 결과", noDoctor: "~/.claude/hooks/config-doctor.py 가 없습니다.",
+    doctorOk: "정상 (exit 0)", doctorBadFmt: function (c) { return "실패 (exit " + c + ")"; },
+    noOutput: "(출력 없음)", doctorRunning: "검사 중…",
+    fieldModel: "모델", fieldEffort: "강도",
+    detectedFmt: function (src, at) { return "감지됨 · " + src + (at ? " · " + at + " 동기화" : ""); },
+    detectorMissing: "감지기가 없습니다 — 하네스를 설치하면 여기서 바로 전환할 수 있습니다.",
+    useGpt: "Codex 위임", useGrok: "Grok 위임", useClaude: "Claude Code 위임",
+    useCode: "코드·보안 서브에이전트", useTest: "테스트·QA 서브에이전트",
+    ownerPinned: "오너 고정 — 더 상위 모델이 있어도 경고하지 않습니다",
+    applying: "적용 중…", appliedFmt: function (m, e) { return "적용됨 · " + m + (e ? " · " + e : ""); },
+    reasonNoCodex: "Codex CLI가 없어 이 역할은 쓰이지 않습니다.",
+    reasonNoCatalog: "Codex는 있으나 모델 목록을 노출하지 않아 전환할 수 없습니다.",
+    reasonNoGrok: "Grok CLI가 없어 이 역할은 쓰이지 않습니다.",
+    reasonNoClaude: "Claude Code CLI가 없어 이 역할은 쓰이지 않습니다.",
+    onlyOption: "이 백엔드가 제공하는 모델이 하나뿐입니다.",
+    effortFixed: "Grok CLI는 강도 단계를 노출하지 않습니다.",
+    noUltra: "자기 위임 단계(ultra)는 1단위 위임 규칙과 충돌해 제외했습니다.",
+    override: "특정 호출에만 다른 모델을 쓰려면 대화에서 모델 이름을 직접 말하면 됩니다.",
+    errServed: "이 백엔드가 제공하지 않는 모델입니다.",
+    errEffort: "이 모델이 지원하지 않는 강도입니다.",
+    errWrite: "레지스트리를 쓰지 못했습니다.",
+    errGeneric: "전환에 실패했습니다.",
+    errToken: "토큰이 없거나 잘못되었습니다. 서버가 출력한 URL을 그대로 열어 주세요.",
+    errSnapshot: function (s) { return "스냅샷을 불러오지 못했습니다 (HTTP " + s + ")."; }
+  },
+  en: {
+    title: "clx harness install status", loading: "Loading…",
+    metaFmt: function (t) { return "Generated " + t + " · models can be switched right here"; },
+    loadFail: "Could not load",
+    lang: "한국어", langOther: "English",
+    themeSystem: "System", themeLight: "Light", themeDark: "Dark",
+    install: "Install state", installed: "installed", missing: "absent",
+    filesFmt: function (n) { return " · " + n + " files"; },
+    plugins: "Plugins", noPlugins: "No plugins enabled.",
+    skills: "Skills", noSkills: "No skills.",
+    hooks: "Hooks", hookEvents: function (n) { return n + " events"; }, noHooks: "No hooks registered.",
+    library: "Harness library", libraryNote: "harnesses under ~/.agents/harness-library",
+    userCtx: "user/ owner context", noUserDir: "~/.agents/user does not exist.",
+    noFiles: "No files.", namesOnly: "File names only — contents are never read.",
+    countFmt: function (n) { return String(n); }, filesCount: function (n) { return n + " files"; },
+    models: "Model switcher", modelsRaw: "models.toml (raw)", noModels: "~/.agents/models.toml is missing.",
+    doctor: "config-doctor result", noDoctor: "~/.claude/hooks/config-doctor.py is missing.",
+    doctorOk: "clean (exit 0)", doctorBadFmt: function (c) { return "failed (exit " + c + ")"; },
+    noOutput: "(no output)", doctorRunning: "Checking…",
+    fieldModel: "Model", fieldEffort: "Effort",
+    detectedFmt: function (src, at) { return "detected · " + src + (at ? " · synced " + at : ""); },
+    detectorMissing: "No detector found — install the harness to switch models from here.",
+    useGpt: "Codex delegation", useGrok: "Grok delegation", useClaude: "Claude Code delegation",
+    useCode: "Code & security subagent", useTest: "Test & QA subagent",
+    ownerPinned: "owner-pinned — a higher-ranked sibling will not be reported as drift",
+    applying: "Applying…", appliedFmt: function (m, e) { return "Applied · " + m + (e ? " · " + e : ""); },
+    reasonNoCodex: "No Codex CLI, so this role is never used.",
+    reasonNoCatalog: "Codex is installed but exposes no model list, so it cannot be switched here.",
+    reasonNoGrok: "No Grok CLI, so this role is never used.",
+    reasonNoClaude: "No Claude Code CLI, so this role is never used.",
+    onlyOption: "This backend serves a single model.",
+    effortFixed: "The Grok CLI does not expose reasoning tiers.",
+    noUltra: "Self-delegating tiers (ultra) are excluded — they collide with the one-bounded-unit rule.",
+    override: "To use a different model for one call, just name it in the conversation.",
+    errServed: "That model is not served by this backend.",
+    errEffort: "That effort is not supported by this model.",
+    errWrite: "Could not write the registry.",
+    errGeneric: "The switch failed.",
+    errToken: "Missing or wrong token. Open the URL the server printed.",
+    errSnapshot: function (s) { return "Could not load the snapshot (HTTP " + s + ")."; }
+  }
+};
+
+const store = {
+  get: function (k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } },
+  set: function (k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+};
+let lang = store.get("clx.lang", "ko") === "en" ? "en" : "ko";
+let theme = ["system", "light", "dark"].indexOf(store.get("clx.theme", "system")) >= 0
+  ? store.get("clx.theme", "system") : "system";
+let snap = null;
+let inflight = null;
+const T = function () { return STR[lang]; };
+
+/* ------------------------------------------------------------------ dom */
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined && text !== null) n.textContent = String(text);
+  return n;
+}
+
+function segment(host, items, current, onPick) {
+  host.textContent = "";
+  items.forEach(function (it) {
+    const b = el("button", null, it.label);
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(it.value === current));
+    b.addEventListener("click", function () { onPick(it.value); });
+    host.appendChild(b);
+  });
+}
+
+function applyTheme() {
+  const root = document.documentElement;
+  root.classList.add("theme-swap");
+  if (theme === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+  void root.offsetHeight;                       // flush the swap before transitions come back
+  requestAnimationFrame(function () { root.classList.remove("theme-swap"); });
+}
+
+function paintPrefs() {
+  const t = T();
+  segment(document.getElementById("langSeg"),
+    [{ value: "ko", label: t.lang }, { value: "en", label: t.langOther }], lang,
+    function (v) { if (v === lang) return; lang = v; store.set("clx.lang", v); paintAll(); });
+  segment(document.getElementById("themeSeg"),
+    [{ value: "system", label: t.themeSystem }, { value: "light", label: t.themeLight },
+     { value: "dark", label: t.themeDark }], theme,
+    function (v) { theme = v; store.set("clx.theme", v); applyTheme(); paintPrefs(); });
+}
+
+function card(title, count, wide) {
+  const c = el("div", "card" + (wide ? " wide" : ""));
+  const h = el("h2", null, title);
+  if (count !== undefined && count !== null) h.appendChild(el("span", "count", "  " + count));
+  c.appendChild(h);
+  app.appendChild(c);
+  return c;
+}
+
+function list(parent, items, emptyText) {
+  if (!items || !items.length) {
+    parent.appendChild(el("div", "empty", emptyText));
+    return;
+  }
+  const box = el("div", "scroll");
+  const ul = el("ul");
+  items.forEach(function (it) {
+    const li = el("li");
+    if (typeof it === "string") {
+      li.appendChild(el("span", "k", it));
+    } else {
+      const row = el("div", "row");
+      row.appendChild(el("span", "k", it.k));
+      row.appendChild(el("span", "v", it.v));
+      li.appendChild(row);
+    }
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  parent.appendChild(box);
+}
+
+/* -------------------------------------------------------- model switcher */
+const ROLE_USE = { gpt_exec: "useGpt", grok_exec: "useGrok", claude_exec: "useClaude", code_delegate: "useCode", test_agent: "useTest" };
+const REASON = { "no-codex": "reasonNoCodex", "no-catalog": "reasonNoCatalog", "no-grok": "reasonNoGrok", "no-claude": "reasonNoClaude" };
+
+function chipRow(parent, labelText, values, current, disabled, onPick) {
+  const field = el("div", "field");
+  field.appendChild(el("span", "field-label", labelText));
+  values.forEach(function (v) {
+    const b = el("button", "chip");
+    b.type = "button";
+    b.appendChild(document.createTextNode(v.model || v.value));
+    if (v.note) {
+      b.appendChild(el("span", "note", v.note));
+      b.title = (v.model || v.value) + " — " + v.note;
+    }
+    b.setAttribute("aria-pressed", String((v.model || v.value) === current));
+    b.disabled = !!disabled;
+    b.addEventListener("click", function () { onPick(v.model || v.value); });
+    field.appendChild(b);
+  });
+  parent.appendChild(field);
+  return field;
+}
+
+function staticField(parent, labelText, value, why) {
+  const f = el("div", "field");
+  f.appendChild(el("span", "field-label", labelText));
+  f.appendChild(el("span", "tag", value));
+  if (why) f.appendChild(el("span", "note-line", why));
+  parent.appendChild(f);
+}
+
+// catalog order is not a ranking — falling back to the LAST entry silently picked whatever the
+// backend happened to list last. Keep the current tier when it survives, else the highest KNOWN one.
+const EFFORT_RANK = ["low", "medium", "high", "xhigh", "max"];
+function bestEffort(option, wanted) {
+  const list = (option && option.efforts) || [];
+  if (!list.length) return null;
+  if (list.indexOf(wanted) >= 0) return wanted;
+  const ranked = list.filter(function (e) { return EFFORT_RANK.indexOf(e) >= 0; })
+    .sort(function (a, b) { return EFFORT_RANK.indexOf(a) - EFFORT_RANK.indexOf(b); });
+  return ranked.length ? ranked[ranked.length - 1] : list[0];
+}
+
+const ROLE_SLASH = { gpt_exec: "gpt", grok_exec: "grok", claude_exec: "claude" };
+
+function renderRole(parent, row) {
+  const t = T();
+  const box = el("div", "role");
+  const head = el("div", "role-head");
+  const left = el("div");
+  const name = el("span", "role-name", t[ROLE_USE[row.role]] || row.role);
+  if (ROLE_SLASH[row.role]) {
+    name.appendChild(document.createTextNode(" "));
+    name.appendChild(el("span", "role-key", "/" + ROLE_SLASH[row.role]));
+  }
+  left.appendChild(name);
+  left.appendChild(el("span", "role-key", row.role));
+  head.appendChild(left);
+  // the committed value belongs next to the name, not repeated under the chips
+  const now = el("span", "role-now", row.model);
+  if (row.effort) now.appendChild(el("span", "dim", " · " + row.effort));
+  head.appendChild(now);
+  box.appendChild(head);
+
+  const status = el("div", "status");
+  status.setAttribute("aria-live", "polite");
+
+  if (row.reason) {
+    box.appendChild(el("div", "note-line", t[REASON[row.reason]] || row.reason));
+    parent.appendChild(box);
+    return;
+  }
+
+  const current = row.options.filter(function (o) { return o.model === row.model; })[0];
+  const send = function (model, effort) {
+    if (model === row.model && effort === row.effort) return;
+    // interruptible: a second click retargets from the visible state instead of queueing
+    if (inflight) inflight.abort();
+    const ctrl = new AbortController();
+    inflight = ctrl;
+    box.classList.add("busy");
+    status.textContent = t.applying;
+    switchModel(row.role, model, effort, ctrl.signal)
+      .then(function (data) {
+        inflight = null;
+        snap.models = data.models;
+        if (data.offers && data.offers.available) snap.model_offers = data.offers;
+        paintAll();
+        const fresh = document.querySelector('[data-role="' + row.role + '"] .status');
+        if (fresh) fresh.textContent = t.appliedFmt(model, effort);
+      })
+      .catch(function (e) {
+        // an abort still leaves THIS row dimmed and stuck on "적용 중…", and a language switch
+        // mid-flight detaches these nodes — so always resolve the row by role, not by closure
+        const live = document.querySelector('[data-role="' + row.role + '"]');
+        if (live) live.classList.remove("busy");
+        const fresh = live && live.querySelector(".status");
+        if (e && e.name === "AbortError") {
+          if (fresh) fresh.textContent = "";
+          return;
+        }
+        inflight = null;
+        if (fresh) {
+          fresh.textContent = e.message || t.errGeneric;
+          fresh.className = "status bad";
+        }
+      });
+  };
+
+  // a row with nothing to choose from becomes static text, not a dead button: a disabled control
+  // that still shows the current value reads as broken and dims the one fact you came here for
+  if (row.switchable) {
+    chipRow(box, t.fieldModel, row.options, row.model, false, function (model) {
+      const opt = row.options.filter(function (o) { return o.model === model; })[0];
+      send(model, bestEffort(opt, row.effort) || row.effort);
+    });
+  } else {
+    staticField(box, t.fieldModel, row.model, t.onlyOption);
+  }
+
+  if (row.efforts && row.efforts.length) {
+    chipRow(box, t.fieldEffort, row.efforts.map(function (e) { return { value: e }; }),
+      row.effort, false, function (effort) { send(row.model, effort); });
+  } else {
+    staticField(box, t.fieldEffort, row.effort, t.effortFixed);
+  }
+
+  if (row.owner_pinned) box.appendChild(el("div", "note-line", t.ownerPinned));
+  box.appendChild(status);      // silent until a switch is in flight
+  box.setAttribute("data-role", row.role);
+  parent.appendChild(box);
+}
+
+function switchModel(role, model, effort, signal) {
+  return fetch("/api/model?t=" + encodeURIComponent(token), {
+    method: "POST", cache: "no-store", signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role: role, model: model, effort: effort })
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (body) {
+      if (r.ok) return body;
+      const t = T();
+      const map = { "model-not-served": t.errServed, "effort-not-supported": t.errEffort,
+                    "write-failed": t.errWrite };
+      throw new Error(map[body.error] || t.errGeneric);
+    });
+  });
+}
+
+/* ----------------------------------------------------------------- page */
+function render(d) {
+  const t = T();
+  document.documentElement.lang = lang;
+  document.getElementById("title").textContent = t.title;
+  document.title = t.title;
+  meta.textContent = t.metaFmt(d.generated_at || "-");
+  app.textContent = "";
+
+  const offers = d.model_offers || { available: false, roles: [] };
+  const mc = card(t.models, null, true);
+  if (!offers.available) {
+    mc.appendChild(el("div", "empty", t.detectorMissing));
+  } else {
+    if (offers.codex_source) {
+      mc.appendChild(el("div", "detected", t.detectedFmt(offers.codex_source, offers.codex_synced)));
+    }
+    (offers.roles || []).forEach(function (row) { renderRole(mc, row); });
+    const foot = el("div", "footnotes");
+    foot.appendChild(el("div", null, t.noUltra));
+    foot.appendChild(el("div", null, t.override));
+    mc.appendChild(foot);
+  }
+
+  const inst = card(t.install);
+  const iul = el("ul");
+  [".claude", ".codex", ".agents"].forEach(function (key) {
+    const v = (d.installed || {})[key] || {};
+    const li = el("li");
+    const row = el("div", "row");
+    row.appendChild(el("span", "k", "~/" + key));
+    const state = el("span", "v");
+    state.appendChild(el("span", v.exists ? "ok" : "bad", v.exists ? t.installed : t.missing));
+    state.appendChild(document.createTextNode(t.filesFmt(v.file_count || 0)));
+    row.appendChild(state);
+    li.appendChild(row);
+    iul.appendChild(li);
+  });
+  inst.appendChild(iul);
+
+  const plug = card(t.plugins, t.countFmt((d.plugins || []).length));
+  if ((d.plugins || []).length) {
+    const tags = el("div", "tags scroll");
+    d.plugins.forEach(function (p) { tags.appendChild(el("span", "tag", p)); });
+    plug.appendChild(tags);
+  } else {
+    plug.appendChild(el("div", "empty", t.noPlugins));
+  }
+
+  list(card(t.skills, t.countFmt((d.skills || []).length)), d.skills, t.noSkills);
+
+  const hooks = card(t.hooks, t.hookEvents((d.hooks || []).length));
+  list(hooks, (d.hooks || []).map(function (h) {
+    return { k: h.event, v: (h.commands || []).join(", ") || "-" };
+  }), t.noHooks);
+
+  const lib = card(t.library);
+  lib.appendChild(el("div", "big", d.harness_library || 0));
+  lib.appendChild(el("div", "empty", t.libraryNote));
+
+  const uc = d.user_context || {};
+  const user = card(t.userCtx, t.filesCount((uc.files || []).length));
+  if (!uc.exists) {
+    user.appendChild(el("div", "empty", t.noUserDir));
+  } else {
+    list(user, uc.files, t.noFiles);
+    user.appendChild(el("div", "empty", t.namesOnly));
+  }
+
+  const models = card(t.modelsRaw, null, true);
+  if (d.models) models.appendChild(el("pre", null, d.models));
+  else models.appendChild(el("div", "empty", t.noModels));
+
+  const doc = d.doctor;
+  const dc = card(t.doctor, null, true);
+  if (doc === undefined) {                       // still running; the rest of the page is usable
+    dc.appendChild(el("div", "empty", t.doctorRunning));
+  } else if (!doc || !doc.available) {
+    dc.appendChild(el("div", "empty", t.noDoctor));
+  } else {
+    const code = doc.exit_code;
+    const line = el("div", "sub");
+    line.appendChild(el("span", code === 0 ? "ok" : "bad",
+      code === 0 ? t.doctorOk : t.doctorBadFmt(code === null ? "?" : code)));
+    dc.appendChild(line);
+    dc.appendChild(el("pre", null, (doc.tail || []).join("\n") || t.noOutput));
+  }
+}
+
+function paintAll() {
+  paintPrefs();
+  if (snap) render(snap);
+}
+
+function fail(msg) {
+  meta.textContent = T().loadFail;
+  app.textContent = "";
+  app.appendChild(el("div", "error", msg));
+}
+
+// The token is stripped from the URL so it never lands in history — but then a plain refresh used
+// to hand the user a raw 403. sessionStorage keeps it for this tab only (gone when the tab closes),
+// which is strictly less exposure than leaving it in the address bar.
+const urlToken = new URLSearchParams(location.search).get("t") || "";
+let token = urlToken;
+try {
+  if (urlToken) sessionStorage.setItem("clx.token", urlToken);
+  else token = sessionStorage.getItem("clx.token") || "";
+} catch (_) {}
+if (urlToken) { try { history.replaceState(null, "", location.pathname); } catch (_) {} }
+applyTheme();
+paintPrefs();
+meta.textContent = T().loading;
+fetch("/api/snapshot?t=" + encodeURIComponent(token), { cache: "no-store" })
+  .then(function (r) {
+    if (r.status === 403) throw new Error(T().errToken);
+    if (!r.ok) throw new Error(T().errSnapshot(r.status));
+    return r.json();
+  })
+  .then(function (d) {
+    snap = d;
+    paintAll();
+    // the slow check follows the fast page instead of blocking it
+    return fetch("/api/doctor?t=" + encodeURIComponent(token), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : { available: false }; })
+      .then(function (doc) { snap.doctor = doc; paintAll(); })
+      .catch(function () { snap.doctor = { available: false }; paintAll(); });
+  })
+  .catch(function (e) { fail(e.message || T().errGeneric); });
+</script>
+</body>
+</html>
