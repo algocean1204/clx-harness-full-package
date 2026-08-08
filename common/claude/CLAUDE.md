@@ -6,7 +6,7 @@ Core rules above are the source of truth; this file adds Claude-only deltas and 
 
 ## Claude-only always-on
 
-- Goals/ensemble: no goals or plan-only turns except the system gate and the core rule 11 two-stage approval gate (first instruction of a new task). The rule-11 gate owns task start — `brainstorming`/`clx-grill-me` fire only on explicit request or inside the gate. Authorized work: debate → implement → verify same turn; review returns consensus, never implementation authority. → `work/goals`, `work/ensemble-consensus`
+- Goals/ensemble: no goals or plan-only turns except the system gate and the core rule 11 event-driven specification gate for a new non-trivial task. The rule-11 gate owns task start — `brainstorming`/`clx-grill-me` fire only on explicit request or inside the gate. Authorized work: debate → implement → verify same turn; review returns consensus, never implementation authority. → `work/goals`, `work/ensemble-consensus`
 - `/supercoder` is explicit slash-only (user-invoked only, `disable-model-invocation`); `clx-preprocess` may self-load when preprocessing is genuinely needed. Routing detail: `work/cluxion`.
 
 ## Guide router — read `~/.claude/guides/<guide>.md` on trigger

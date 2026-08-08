@@ -109,36 +109,44 @@ function Show-DetectedEnvironment {
 }
 
 function Merge-GrokConfig([string]$Target, [string]$Previous) {
+  $definitionLine = [System.IO.File]::ReadAllLines($Target) |
+    Where-Object { $_ -match '^\s*definition\s*=' } | Select-Object -First 1
   $profileLine = [System.IO.File]::ReadAllLines($Target) |
     Where-Object { $_ -match '^\s*profile\s*=' } | Select-Object -First 1
+  if (-not $definitionLine) { throw 'common\grok\config.toml is missing [agent] definition' }
   if (-not $profileLine) { throw 'common\grok\config.toml is missing [sandbox] profile' }
 
   $text = [System.IO.File]::ReadAllText($Previous).TrimEnd([char[]]"`r`n")
   $lines = if ($text) { [regex]::Split($text, '\r?\n') } else { @() }
-  $output = [System.Collections.Generic.List[string]]::new()
-  $inSandbox = $false
-  $foundSandbox = $false
-  $profileSet = $false
-  foreach ($line in $lines) {
-    if ($line -match '^\s*\[') {
-      if ($inSandbox -and -not $profileSet) { $output.Add($profileLine); $profileSet = $true }
-      $inSandbox = $line -match '^\s*\[sandbox\]\s*(?:#.*)?$'
-      if ($inSandbox) { $foundSandbox = $true; $profileSet = $false }
-      $output.Add($line)
-    } elseif ($inSandbox -and $line -match '^\s*profile\s*=') {
-      if (-not $profileSet) { $output.Add($profileLine); $profileSet = $true }
-    } else {
-      $output.Add($line)
+  function Set-TomlValue([string[]]$InputLines, [string]$Section, [string]$Key, [string]$Value) {
+    $output = [System.Collections.Generic.List[string]]::new()
+    $inSection = $false
+    $foundSection = $false
+    $valueSet = $false
+    foreach ($line in $InputLines) {
+      if ($line -match '^\s*\[') {
+        if ($inSection -and -not $valueSet) { $output.Add($Value); $valueSet = $true }
+        $inSection = $line -match ("^\s*\[" + [regex]::Escape($Section) + "\]\s*(?:#.*)?$")
+        if ($inSection) { $foundSection = $true; $valueSet = $false }
+        $output.Add($line)
+      } elseif ($inSection -and $line -match ("^\s*" + [regex]::Escape($Key) + "\s*=")) {
+        if (-not $valueSet) { $output.Add($Value); $valueSet = $true }
+      } else {
+        $output.Add($line)
+      }
     }
+    if ($inSection -and -not $valueSet) { $output.Add($Value) }
+    if (-not $foundSection) {
+      if ($output.Count -gt 0 -and $output[$output.Count - 1]) { $output.Add('') }
+      $output.Add("[$Section]")
+      $output.Add($Value)
+    }
+    return ,$output.ToArray()
   }
-  if ($inSandbox -and -not $profileSet) { $output.Add($profileLine) }
-  if (-not $foundSandbox) {
-    if ($output.Count -gt 0 -and $output[$output.Count - 1]) { $output.Add('') }
-    $output.Add('[sandbox]')
-    $output.Add($profileLine)
-  }
-  [System.IO.File]::WriteAllText($Target, [string]::Join([Environment]::NewLine, $output) + [Environment]::NewLine)
-  Write-Host 'config.toml: merged - your Grok settings kept, sandbox profile updated'
+  $lines = Set-TomlValue $lines 'agent' 'definition' $definitionLine
+  $lines = Set-TomlValue $lines 'sandbox' 'profile' $profileLine
+  [System.IO.File]::WriteAllText($Target, [string]::Join([Environment]::NewLine, $lines) + [Environment]::NewLine)
+  Write-Host 'config.toml: merged - your Grok settings kept, shared-root adapter updated'
 }
 
 if ($Check) {

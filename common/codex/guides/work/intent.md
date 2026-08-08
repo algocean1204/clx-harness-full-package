@@ -23,6 +23,12 @@ Lock WHAT the request is about, then also WHERE it lives. Core #12 carries the c
 | **machine** | `~/Library/**`, Keychain, LaunchAgents, PATH, brew |
 | **other-project** | any repo root that is not `$CWD`; `~/.codex/config.toml` `[projects."…"]` blocks and `MEMORY.md` rows name them by the dozen |
 
+## Project-local filesystem CRUD
+
+A user-requested project task grants ordinary local file operations strictly below the current project root. Create, read, update, move, rename, and delete files or directories without another conversational approval when the operation directly serves that task. This includes generated artifacts and their cleanup; deletion inside this boundary is covered even when it is not reversible.
+
+Resolve symlinks before applying the boundary: the resolved source and destination must both remain below the project root. The root itself, `.git`, secrets/auth, agent or host state, other paths or repositories, remote services, deployment or publishing, and destructive Git history operations remain outside this grant. Platform prompts still apply.
+
 Reading out of scope is fine and often necessary. Reporting out of scope without saying so is the
 leak: a codex-config question answered from `model_catalog_json` put six vendor model names into a
 project session that had never mentioned that vendor, and the user's reaction was "난 말한적이 없는데?".
@@ -35,43 +41,47 @@ The fact was correctly sourced — #12 was satisfied — and still wrong to stat
 - **Scope mismatch is a rule-11 conflict line**, not a new question: `충돌 범위 — 계획 전역 설정 기준 /
   요청 프로젝트-로컬 / 승인 시 기본 전역`. It never becomes a second ask.
 
-## Two-stage approval gate
+## Event-driven specification gate
 
-Use this gate only when the task requires an explicit conversational approval before
-implementation. Trivial answers, read-only inspection, precise approved follow-ups, and work
-already covered by an approved development specification stay DIRECT.
+Specifications are chat responses, not files. Use the smallest applicable route:
 
-Both specifications are chat responses, not files. Read-only analysis may gather the facts needed
-to write them, but no project or harness mutation is allowed before development-spec approval.
+| Task | Work specification | Development specification | Final report |
+|---|---|---|---|
+| trivial answer or precise approved follow-up | N/A | N/A | natural answer |
+| non-trivial read-only analysis or design | required once | N/A | required once |
+| file, code, or configuration mutation | required once | required once before mutation | required once |
+| deploy, publish, guarded command, or external write | required once | required once with command, permission, and rollback | required once |
+| execution inside an approved boundary | reuse | reuse | measured milestone only |
 
-1. `WORK_SPEC_PENDING` — report Current-state evidence and the Existing execution flow, then give
-   the objective, in/out scope, deliverables, DoD, risks, rollback, conflicts, and what the
-   development specification will decide. End with `승인 대기 — 작업명세서` and wait.
-2. `DEV_SPEC_PENDING` — only after work-spec approval, give File-by-file changes, the proposed
-   runtime flow, exact commands and permissions, test/DoD mapping, failure and security cases, and
-   Rollback and deployment. End with `승인 대기 — 개발명세서` and wait.
-3. `EXECUTING` — only after development-spec approval, implement and verify autonomously inside
-   the approved boundary. Do not ask another conversational permission to finish.
+The work specification uses stable IDs: `W1` requirements, `O1` outputs, `A1` acceptance criteria,
+and `X1` exclusions. Each row must be independently understandable and verifiable. Report current
+state and existing flow, then risks, rollback, conflicts, and what an applicable development
+specification will decide. End with `승인 대기 — 작업명세서` and wait.
 
-A material change to scope, authority, risk, deliverables, or DoD returns to
-`WORK_SPEC_PENDING`; an implementation-only change returns to `DEV_SPEC_PENDING`. Revisions stay
-at their current stage until approved. A clear approval reply applies only to the immediately
-preceding packet. If one guarded command is already known, its CLI-minted exact grant line may be
-the development-spec approval. Multiple guarded commands use one development-spec approval and
-later command-specific grants without repeating either specification. Platform prompts and
-MANUAL_ONLY boundaries remain separate and cannot be pre-approved conversationally.
+After work-spec approval, execute directly when the task is read-only and has no material execution
+choice. Otherwise issue one development specification: `D1 [W1]` names a change and the work item it
+implements; `V1 [A1]` names the exact verification and acceptance item it proves. Include files,
+runtime flow, exact commands and permissions, failure/security cases, deployment, and rollback.
+End with `승인 대기 — 개발명세서` and wait. No mutation is allowed before that approval.
 
-Persist only the current stage in this session's bounded intent core, for example:
-`Approval: work-spec approved; development-spec pending`. Never copy either chat specification into
-session state.
+Do not regenerate either specification during execution. A material change to scope, authority,
+risk, outputs, or acceptance returns to the work specification; an implementation-only change
+returns to the development specification. A clear approval applies only to the immediately
+preceding packet. Short command grants remain command-specific and do not create another
+specification stage. Platform prompts and MANUAL_ONLY boundaries remain separate.
+
+Persist one compact current snapshot in this session's bounded intent core: ID rows, not approval
+prose, command output, evidence history, or the full chat packet. Update it only at task start, an
+approval transition, a material change, a blocker, or final closure.
 
 ## Completion report exit contract
 
-`EXECUTING` exits only after every REQUIRED item is closed and the final chat report states
-work-spec N/N, development-spec N/N, DoD N/N, measured verification, and the actual apply,
-deploy, and backup status where those actions were in scope. This is a chat response, never a file.
-If any REQUIRED item remains, emit a blocker report instead of claiming completion.
-Clear the Approval line only after the completion report is sent.
+Execution exits only after every REQUIRED item is closed. The one final chat report closes each
+applicable W/O/A ID and each D/V ID when development occurred; otherwise it states
+`development-spec N/A`. Include measured verification and actual apply, deploy, and backup status
+where those actions were in scope. If any REQUIRED item remains, emit a blocker report instead of
+claiming completion. After sending the report, retain the compact `closed` snapshot until the next
+task overwrites it. Do not regenerate either specification during execution.
 
 ## 2. Alignment loop (think → judge → adjust → re-judge → execute)
 
@@ -113,7 +123,7 @@ Classify each bounded decision cluster once. Reuse the verdict until scope or ri
   same turn. Any disagreement or UNKNOWN becomes one consolidated user question. One round only:
   no recursive gate, retries, or file/command-by-file repetition.
 - **USER_ONLY** — Ask once when the action changes scope or product intent, lacks a reliable rollback,
-  risks data loss, or adds an unapproved cost, public/external message, push/merge/deploy/publish,
+  risks data loss outside the project-local filesystem CRUD grant, or adds an unapproved cost, public/external message, push/merge/deploy/publish,
   production effect, or meaningful preference choice. Exact current-project app/LaunchAgent deployment
   is also USER_ONLY; already explicit authorization is not re-asked.
 - **MANUAL_ONLY** — Login/auth, credentials/keys, account switching, cookies, profiles, sessions,
@@ -125,6 +135,7 @@ Classify each bounded decision cluster once. Reuse the verdict until scope or ri
 | Fixture | Expected route |
 |---------|----------------|
 | Implement an already approved design | DIRECT; execute now |
+| ordinary project-local filesystem CRUD | DIRECT; execute without another conversational approval |
 | Choose between reversible shared-API boundaries | INTERNAL_GATE; 3/3 SAFE then execute |
 | A required tool call needs sandbox escalation | PLATFORM_PROMPT; no duplicate chat question |
 | Unapproved public push, deploy, paid service, or destructive migration | USER_ONLY |

@@ -25,11 +25,10 @@ except Exception:
 # --- owner grant capture -----------------------------------------------------------------
 # Claude UserPromptSubmit is the primary place a real owner prompt is visible. Codex may recover
 # the latest real user_message from its trusted transcript when that event is skipped; both paths
-# call the same capture implementation. The agent proposes `승인 <ID>: <exact command>`; the owner
-# echoes that one line and nothing else; the ledger entry is hashed from the OWNER'S text, never
-# from what the agent stored — so an agent that displays one command and files another gains
-# nothing. The ID must have been issued this session, which is what stops text pasted from a
-# file, a web page, or another model from minting anything.
+# call the same capture implementation. The agent discloses the command in the development
+# specification, proposes `승인:<ID>`, and the owner echoes that one line and nothing else. The
+# trusted hook resolves the exact command bound at issue time and hashes it into the ledger. The ID
+# must have been issued here, remain live, and be unused; pasted text cannot mint anything.
 # Runs BEFORE the proportionality gate below: an approval line is short by design.
 # The rule itself lives in clx_grant.capture so Codex's UserPromptSubmit shares one implementation.
 try:
@@ -178,11 +177,12 @@ print(
     "stated quantity as a suggestion. During long runs, post one-line milestone updates at phase "
     "boundaries (see clx-concise-report §interim). Consult guides/work/intent-patterns.md for known "
     "traps. Full protocol: guides/work/intent.md "
-    "TWO-STAGE APPROVAL GATE (core rule 11): for a NEW approval-requiring task, first present the "
-    "chat-only work specification and wait. After its approval, present the chat-only development "
-    "specification and wait. No mutation or implementation command is allowed before development-"
-    "spec approval; after it, execute autonomously inside the approved boundary. Material scope, "
-    "authority, or risk changes return to the work specification; implementation-only changes "
-    "return to the development specification. Trivial/direct-answer/read-only requests and precise "
+    "EVENT-DRIVEN SPECIFICATION GATE (core rule 11): for a NEW non-trivial task, present one "
+    "chat-only work specification with stable W/O/A/X IDs and wait. After approval, read-only "
+    "analysis executes directly. File/config/code mutation, deploy, publish, guarded commands, or "
+    "material execution choices require one chat-only development specification with D/V IDs, then "
+    "approval; no mutation precedes it. Do not regenerate specs during execution. Material scope, "
+    "authority, risk, outputs, or acceptance changes return to the work specification; implementation-"
+    "only changes return to the development specification. Trivial/direct answers and precise "
     "approved follow-ups skip the gate. Full contract: guides/work/intent.md."
 )

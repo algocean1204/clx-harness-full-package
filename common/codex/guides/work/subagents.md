@@ -12,4 +12,10 @@ Handoff: one-sentence goal, locked scope/quantities, files, constraints, verific
 
 Main composes ONE direction block and prepends it to every agent prompt in the fan-out: goal, non-goals, hard constraints, lean boundary (what NOT to build — the YAGNI line), and the verification standard. Below it, each prompt carries its own scoped slice plus a sibling map (one line per sibling: name → scope → out-of-scope), so every agent knows what the others are building and in which direction. Agents still execute solo — no cross-agent chatter; coordination lives in the shared brief, and main reconciles overlaps at merge. Purpose: team-level alignment without team overhead — no duplicate work, no scope creep, no two agents over-engineering the same seam.
 
-Design exception: every design task uses 1–`min(7, available slots, independent lenses)` scoped subagents; substantial cycles default to independent Fable and SOL lenses when available. At most one agent may write shared files, and exactly one only when writes occur; all others are read-only. Never recursively spawn or retry indefinitely; release completed agents immediately. The orchestrator owns direction, merge, and final evidence.
+Design exception: substantial design work uses one scoped design specialist. Tiny, fully specified
+fixes stay with main. The specialist receives one direction brief and may be the sole writer only
+when the approved task includes implementation; review-only work stays read-only. Combine visual,
+UX, accessibility, and motion lenses in that one bounded assignment instead of creating a standing
+panel. Never recursively spawn or retry indefinitely. The orchestrator owns direction, merge, and
+final evidence. A surface without subagents runs the same specialist role locally and reports that
+capability fallback.

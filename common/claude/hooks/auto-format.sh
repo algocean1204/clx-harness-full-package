@@ -18,7 +18,7 @@ d = json.load(sys.stdin)
 ti = d.get('tool_input') or {}
 tool = d.get('tool_name') or ''
 # 'the turn did real work' must not mean 'the turn ran a command' — a read-only rg on a turn that
-# then correctly stops at the two-stage approval gate would be pushed past the user's approval.
+# then correctly stops at an applicable specification gate would be pushed past approval.
 if tool == 'Bash':
     cmd = ti.get('command') or ''
     mut = bool(re.search(r'(^|[|;&\`(]\s*)(rm|mv|cp|mkdir|rmdir|ln|touch|chmod|chown|install|tee|dd|'

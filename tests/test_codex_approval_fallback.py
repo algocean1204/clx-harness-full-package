@@ -241,8 +241,12 @@ class CodexApprovalFallbackTest(unittest.TestCase):
 
     def test_expired_challenge_is_rejected(self) -> None:
         approval = self.issue()
-        challenge_id = approval.split()[1].rstrip(":")
-        self.store.write_text(f"{challenge_id}\t2000-01-01T00:00:00+00:00\n", encoding="utf-8")
+        challenge_id = approval.split(":", 1)[1]
+        _cid, _stamp, encoded = self.store.read_text(encoding="utf-8").strip().split("\t")
+        self.store.write_text(
+            f"{challenge_id}\t2000-01-01T00:00:00+00:00\t{encoded}\n",
+            encoding="utf-8",
+        )
         self.write_events(self.user_event(approval))
 
         result = self.run_guard()

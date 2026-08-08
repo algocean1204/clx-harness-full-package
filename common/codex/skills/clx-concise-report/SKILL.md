@@ -65,13 +65,14 @@ padding. `- 작업 — 완료됨` is the shape without the content; delete it.
 
 ## Approved-task completion
 
-For a task that passed the two-stage approval gate, the final chat report is the exit contract.
-Keep it in chat; never create a completion-report file unless the user explicitly requested one.
-Report only applicable rows in this flat shape:
+For a non-trivial task, the one final chat report is the exit contract. Keep it in chat; never
+create a completion-report file unless the user explicitly requested one. Close the stable IDs
+from the applicable specifications. If no development specification was needed, write
+`development-spec N/A`; never invent `0/0`. Report only applicable rows in this flat shape:
 
 ```text
-<task> 완료 — work-spec N/N · development-spec N/N · DoD N/N · verification N/N.
-- 명세 충족 [판단] — work-spec N/N, development-spec N/N, DoD N/N
+<task> 완료 — work-spec N/N · development-spec N/N|N/A · DoD N/N · verification N/N.
+- 명세 충족 [판단] — W1 PASS, O1 DONE, A1 PASS; D1/V1 when applicable
 - 적용·배포·백업 [측정] — <actual apply, deploy, and backup status>
 - 검증 [측정] — <command> → <pasted output fragment>
 미검증: 없음

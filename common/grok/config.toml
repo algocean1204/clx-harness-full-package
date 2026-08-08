@@ -1,3 +1,6 @@
 # Grok CLI portable baseline. This favors compatibility in restricted desktop runners.
+[agent]
+definition = "__CLX_HOME__/.grok/agents/clx-delegate.md"
+
 [sandbox]
 profile = "off"

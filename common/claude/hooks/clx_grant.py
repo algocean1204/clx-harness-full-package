@@ -5,13 +5,13 @@ The split that makes this work:
 
   ISSUE  the agent runs `clx_grant.py issue "<exact command>"` and shows the printed line.
          Issuing grants nothing — it only reserves an unguessable id.
-  ECHO   the owner sends that one line, and only that line. `intent-lock.py` (UserPromptSubmit,
-         the one channel injected content cannot reach) burns the id and mints the ledger entry.
+  ECHO   the owner sends `승인:<id>`, and only that line. `intent-lock.py` (UserPromptSubmit,
+         the one channel injected content cannot reach) burns the id, resolves its command,
+         and mints the ledger entry.
   SPEND  `guard-destructive.py` consumes the entry once, at PreToolUse, by hash. No conversation.
 
-The minted hash comes from the OWNER'S text, never from anything stored at issue time, so an
-agent that prints one command and files another gains nothing: whatever the owner actually sent
-is what the guard will allow.
+The exact command is disclosed in the approved development specification, then bound to a random
+id at issue time. The owner echoes only that id; changing the command requires a new challenge.
 
 Honest limit: same UID, no cryptographic boundary — an agent that deliberately edits this file
 or the guard defeats it. The id makes pasted text unable to mint; it does not make the harness
@@ -21,6 +21,7 @@ entry is visible in `~/.claude/security/user-approvals.txt`. (The owner's config
 """
 from __future__ import annotations
 
+import base64
 import datetime
 import hashlib
 import os
@@ -50,7 +51,7 @@ def _now():
 
 
 def _read():
-    """[(id, issued_at)] for entries still inside the TTL; malformed rows are dropped."""
+    """[(id, issued_at, command)] inside the TTL; malformed rows are dropped."""
     live = []
     try:
         with open(store_path(), encoding="utf-8") as fh:
@@ -58,7 +59,10 @@ def _read():
     except OSError:
         return live
     for row in rows:
-        cid, _, stamp = row.partition("\t")
+        parts = row.split("\t")
+        if len(parts) != 3:
+            continue
+        cid, stamp, encoded = parts
         if not ID.match(cid.strip()):
             continue
         try:
@@ -68,15 +72,22 @@ def _read():
         age = (_now() - issued).total_seconds()
         # A future stamp — clock skew, a DST jump, or a tampered row — would otherwise never
         # expire, since a negative age is always "inside" the window. Allow a minute of skew.
-        if -60 <= age <= TTL_MIN * 60:
-            live.append((cid.strip(), stamp.strip()))
+        try:
+            command = base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
+        except (ValueError, UnicodeError):
+            continue
+        if -60 <= age <= TTL_MIN * 60 and command:
+            live.append((cid.strip(), stamp.strip(), command))
     return live
 
 
 def _write(rows):
     tmp = f"{store_path()}.tmp.{os.getpid()}"
     with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write("".join(f"{cid}\t{stamp}\n" for cid, stamp in rows))
+        for cid, stamp, command in rows:
+            encoded = base64.urlsafe_b64encode(command.encode("utf-8")).decode("ascii")
+            fh.write(f"{cid}\t{stamp}\t{encoded}\n")
+    os.chmod(tmp, 0o600)
     os.replace(tmp, store_path())          # atomic; two hooks cannot tear the store
 
 
@@ -103,8 +114,8 @@ def issue(command):
     if reason:
         raise ValueError(reason)
     cid = secrets.token_hex(3).upper()
-    _write(_read() + [(cid, _now().isoformat(timespec="seconds"))])
-    return cid, f"승인 {cid}: {command}"
+    _write(_read() + [(cid, _now().isoformat(timespec="seconds"), command)])
+    return cid, f"승인:{cid}"
 
 
 def _claim(cid):
@@ -140,17 +151,18 @@ def _prune_claims():
 
 
 def burn(cid):
-    """Spend the id. True only if it was live AND this caller won the claim."""
+    """Spend the id and return its bound command, or None on any failure."""
     if not ID.match(cid or ""):          # the marker name is a PATH; never let junk shape it
-        return False
+        return None
     rows = _read()
-    if not any(row[0] == cid for row in rows):
-        return False
+    match = next((row for row in rows if row[0] == cid), None)
+    if match is None:
+        return None
     if not _claim(cid):
-        return False
+        return None
     _write([row for row in rows if row[0] != cid])
     _prune_claims()
-    return True
+    return match[2]
 
 
 def mint(command):
@@ -163,7 +175,7 @@ def mint(command):
     return digest
 
 
-ECHO = re.compile(r"^\s*(?:승인|APPROVE)\s+([A-Z0-9]{6})\s*:\s*(\S.*?)\s*$")
+ECHO = re.compile(r"^\s*(?:승인|APPROVE)\s*:\s*([A-Z0-9]{6})\s*$")
 
 
 def capture(prompt):
@@ -179,8 +191,9 @@ def capture(prompt):
     match = ECHO.match(lines[0])
     if not match:
         return ""
-    cid, command = match.group(1), match.group(2)
-    if not burn(cid):
+    cid = match.group(1)
+    command = burn(cid)
+    if command is None:
         return (f"APPROVAL IGNORED: challenge {cid} was never issued here, is older than "
                 f"{TTL_MIN} minutes, or was already used.")
     mint(command)
@@ -204,7 +217,7 @@ if __name__ == "__main__":
         print(_line)
     elif len(sys.argv) >= 2 and sys.argv[1] == "pending":
         try:
-            print("\n".join(cid for cid, _ in _read()) or "(none)")
+            print("\n".join(cid for cid, _, _ in _read()) or "(none)")
         except OSError:
             print("(store unreadable)")
     else:

@@ -113,8 +113,8 @@ print("settings.json: merged — your keys kept, harness hooks added")
 PY
 }
 
-# Preserve every existing Grok setting except the shipped sandbox profile. The profile line
-# comes from common/grok/config.toml so the installer does not duplicate that policy value.
+# Preserve existing Grok settings while enforcing the shipped sandbox profile and shared-root
+# agent adapter. Both values come from common/grok/config.toml so policy has one source.
 merge_grok_config() {  # $1 = shipped target, $2 = snapshot of the user's previous file
   "$PYTHON_BIN" - "$1" "$2" <<'PY'
 import re, sys
@@ -122,38 +122,65 @@ import re, sys
 target_path, previous_path = sys.argv[1], sys.argv[2]
 shipped = open(target_path, encoding="utf-8").read()
 previous = open(previous_path, encoding="utf-8").read()
-section = re.search(r"(?ms)^\s*\[sandbox\]\s*(?:#.*)?$\n(?P<body>.*?)(?=^\s*\[|\Z)", shipped)
-profile = re.search(r"(?m)^\s*profile\s*=.*$", section.group("body") if section else "")
-if not profile:
-    raise SystemExit("install: common/grok/config.toml is missing [sandbox] profile")
 
-profile_line = profile.group(0)
-lines, output = previous.splitlines(), []
-in_sandbox = found_sandbox = profile_set = False
+def shipped_line(section, key):
+    match = re.search(
+        rf"(?ms)^\s*\[{re.escape(section)}\]\s*(?:#.*)?$\n(?P<body>.*?)(?=^\s*\[|\Z)",
+        shipped,
+    )
+    value = re.search(rf"(?m)^\s*{re.escape(key)}\s*=.*$", match.group("body") if match else "")
+    if not value:
+        raise SystemExit(f"install: common/grok/config.toml is missing [{section}] {key}")
+    return value.group(0)
+
+enforced = {
+    "agent": {"definition": shipped_line("agent", "definition")},
+    "sandbox": {"profile": shipped_line("sandbox", "profile")},
+}
+lines, output, current = previous.splitlines(), [], None
+seen_sections, seen_keys = set(), {section: set() for section in enforced}
+
+def close_section():
+    if current not in enforced:
+        return
+    for key, value in enforced[current].items():
+        if key not in seen_keys[current]:
+            output.append(value)
+            seen_keys[current].add(key)
+
 for line in lines:
-    if re.match(r"^\s*\[", line):
-        if in_sandbox and not profile_set:
-            output.append(profile_line)
-            profile_set = True
-        in_sandbox = bool(re.match(r"^\s*\[sandbox\]\s*(?:#.*)?$", line))
-        if in_sandbox:
-            found_sandbox, profile_set = True, False
+    header = re.match(r"^\s*\[([^]]+)\]\s*(?:#.*)?$", line)
+    if header:
+        close_section()
+        current = header.group(1)
+        seen_sections.add(current)
         output.append(line)
-    elif in_sandbox and re.match(r"^\s*profile\s*=", line):
-        if not profile_set:
-            output.append(profile_line)
-            profile_set = True
-    else:
+        continue
+    replacement = None
+    if current in enforced:
+        for key, value in enforced[current].items():
+            if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+                if key not in seen_keys[current]:
+                    replacement = value
+                    seen_keys[current].add(key)
+                break
+    if replacement is not None:
+        output.append(replacement)
+    elif not (current in enforced and any(
+        re.match(rf"^\s*{re.escape(key)}\s*=", line) for key in enforced[current]
+    )):
         output.append(line)
-if in_sandbox and not profile_set:
-    output.append(profile_line)
-if not found_sandbox:
+close_section()
+for section, values in enforced.items():
+    if section in seen_sections:
+        continue
     if output and output[-1]:
         output.append("")
-    output.extend(("[sandbox]", profile_line))
+    output.append(f"[{section}]")
+    output.extend(values.values())
 
 open(target_path, "w", encoding="utf-8").write("\n".join(output).rstrip() + "\n")
-print("config.toml: merged — your Grok settings kept, sandbox profile updated")
+print("config.toml: merged — your Grok settings kept, shared-root adapter updated")
 PY
 }
 

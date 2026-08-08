@@ -19,20 +19,49 @@ Resolve for THIS session with `python3 ~/.claude/hooks/session_intent_paths.py -
 
 cwd-keyed directories and `_legacy*` under `session-intent/` are recovery-only (not injected, not archived by the SID hook). Legacy flat `~/.claude/SESSION_INTENT.md`/`SESSION_DETAIL.md` are auto-migrated to `_legacy*.md` once.
 
-- **`session-intent/<uuid>/core.md` (injected)** — target **~20 lines / ~1.5 KB** (config-doctor WARNs above the 2.5 KB ceiling per §5 — never fails; 1.5 KB is the trim target). Holds ONLY: the standing workflow (1 line), session-SPECIFIC overrides (global rules already live in CLAUDE.md, which persists compaction — do NOT duplicate them), the live State line (gate/streak/cycle/selftest/versions), compact accepted limits/pending actions, and a pointer to an explicit project handoff/checkpoint when long evidence is truly needed. Overwrite in place; never append.
+- **`session-intent/<uuid>/core.md` (injected)** — target **~20 lines / ~1.5 KB** (config-doctor WARNs above the 2.5 KB ceiling per §5 — never fails; 1.5 KB is the trim target). Holds ONLY the metadata and compact current ID rows below, plus session-specific overrides and one explicit handoff/checkpoint pointer when needed. Include only applicable rows. Overwrite in place; never append.
+
+```md
+# Session Core
+State: <pending|executing|blocked|closed>
+Approval: <current approval state>
+ID: <session UUID>
+Time: <started> / <updated>
+Token: <measured input/output/total|unavailable>
+
+## 작업명세서 [ACTIVE|CLOSED]
+- W1: <requirement>
+- O1: <output>
+- A1: <acceptance>
+- X1: <exclusion>
+
+## 개발명세서 [N/A|PENDING|APPROVED|CLOSED]
+- D1 [W1]: <change>
+- V1 [A1]: <verification>
+
+## 보고명세서 [PENDING|FINAL]
+- Status: <final-stage only|ID verdicts>
+- Apply/deploy/backup: <applicable status>
+- Unverified/blocker: <none|item>
+- Risk/issue: <none|item>
+- Next action: <none|user-only unblock>
+```
 
 The real lever is STATE-ONLY with ZERO running history. A State item tracks STATE ("streak 0/5", "cycle-4 running"), never a running log. Per-cycle evidence (what each sweep found/fixed, test counts, commit hashes) belongs in git history or an explicitly authorized project handoff/checkpoint, NOT here — the file may hold only a bare pointer ("latest: X closed, selftest N/0"). If it nears its cap, compress before adding. When a task needs a Definition of Done, put it in the State block as verifiable checkboxes (each names its check — "works well" is not a DoD item).
 
-For a task using the two-stage approval gate, keep only one compact State item such as
-`Approval: work-spec approved; development-spec pending`. Update it when the owner approves the
-immediately preceding chat packet and clear it only after the completion report is sent. Never store either specification body,
-approval prose, command output, or revision history in the core.
+Use stable W/O/A/X and D/V IDs from the approved chat packets, but compress each into one state row;
+the chat packets remain the authoritative detail. Use development `N/A` when the task has no
+implementation stage. While executing, keep the report section to one pending line. After the final
+chat report, retain the compact `closed` snapshot until the next task overwrites it. Never store
+approval prose, command output, per-cycle evidence, or revision history in the core. Record tokens
+only from a measured runtime value; otherwise write `unavailable` rather than estimate.
 
 ## 2. Per-prompt update judgment
 
-On each user prompt, judge once: does it change direction (new task, changed requirement, correction)?
-- Yes → update the affected sections and rewrite the DoD, then work.
-- No (question, "go on", ack, small nudge) → leave the file untouched. Never rewrite it for prompts that change nothing.
+On each user prompt, judge once: is this a new task, approval transition, material direction change,
+blocker, or final closure?
+- Yes → overwrite only the affected current rows, update `Time`, then work.
+- No (question, "go on", ack, small nudge, ordinary execution milestone) → leave the file untouched.
 
 **Directive-target gate** (classify BEFORE acting; default scope = session):
 - **HOW-I-WORK** — model/tool choice, verify-method, delegation, tone, ordering (no explicit artifact operation) → record in this session's core ONLY. Never write it into CLAUDE.md, a rule, a guide, a skill, or a hook.
@@ -56,7 +85,7 @@ While any DoD item is unmet: NEVER emit "이어서 할까요?", "계속할까요
 ## 5. Wiring
 
 - `intent-lock.py` (Claude UserPromptSubmit hook) resolves only this SID's core via `session_intent_paths.py` and injects it each turn; if core is absent but SID is valid, prints the exact core path hint (create on first prompt). The Codex UserPromptSubmit adapter uses the same resolver and emits the same bounded core through `hookSpecificOutput.additionalContext`. This skill owns writing the file; hooks only read it.
-- `session-intent-archive.sh` (Claude SessionEnd hook) archives the core into forgetforge as `session-intent-<session_id>` with `--node-type session --session-id <session_id> --expire-days 90` — recall/hot-invisible, session graph-recallable, TTL-swept by prune. Archives only a validated full-UUID SID (never `unknown`). Keeps the on-disk file for ordinary resume; does not promote/move to a shared seed or delete. **Retention choice:** archived UUID directories stay as small recovery state because resume may reuse the SID — no automatic age deletion/GC without a proven archive-success ownership signal (do not add a SessionStart/Stop GC hook for this). Codex has no SessionEnd hook, so do not misuse its turn-level Stop event for archival. When a task fully completes and no new one starts, clear only the Active task / State + DoD (leave the standing workflow + overrides).
+- `session-intent-archive.sh` (Claude SessionEnd hook) archives the core into forgetforge as `session-intent-<session_id>` with `--node-type session --session-id <session_id> --expire-days 90` — recall/hot-invisible, session graph-recallable, TTL-swept by prune. Archives only a validated full-UUID SID (never `unknown`). Keeps the on-disk file for ordinary resume; does not promote/move to a shared seed or delete. **Retention choice:** archived UUID directories stay as small recovery state because resume may reuse the SID — no automatic age deletion/GC without a proven archive-success ownership signal (do not add a SessionStart/Stop GC hook for this). Codex has no SessionEnd hook, so do not misuse its turn-level Stop event for archival. A completed task stays as one compact `closed` snapshot until a new task overwrites it.
 - `precompact-guard.sh` (existing PreCompact hook) parses hook JSON and includes only this SID's lean core in the MUST-KEEP block — no new hook.
 - `config-doctor.py` warns if any **full-UUID** active core exceeds its ~2.5 KB injection budget; cwd-keyed, legacy detail files, and `_legacy*` dirs are recovery-only and untouched.
 - Evidence discipline: `verification-before-completion`. Report form: `clx-concise-report`.

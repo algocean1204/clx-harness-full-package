@@ -28,6 +28,12 @@ class GrokInstallTest(unittest.TestCase):
 
             config = (home / ".grok" / "config.toml").read_text(encoding="utf-8")
             self.assertIn('[sandbox]\nprofile = "off"', config)
+            self.assertIn(
+                f'[agent]\ndefinition = "{home}/.grok/agents/clx-delegate.md"',
+                config,
+            )
+            agent = (home / ".grok" / "agents" / "clx-delegate.md").read_text(encoding="utf-8")
+            self.assertIn("Read `~/.agents/AGENTS.md` before acting", agent)
 
     def test_fresh_install_carries_codex_session_intent_skill(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -51,6 +57,7 @@ class GrokInstallTest(unittest.TestCase):
             config = (grok / "config.toml").read_text(encoding="utf-8")
             self.assertIn('default = "custom"', config)
             self.assertIn('profile = "off"', config)
+            self.assertIn(f'definition = "{home}/.grok/agents/clx-delegate.md"', config)
             self.assertNotIn('profile = "strict"', config)
             backups = list(grok.glob("config.toml.pre-clx-*"))
             self.assertEqual(1, len(backups))

@@ -16,6 +16,16 @@ Load when a task touches Codex global setup: AGENTS.md, `~/.codex/rules/`, `~/.c
 
 Never add procedural detail to AGENTS.md — add a router row pointing to the file. Never put a file without `paths:` frontmatter in `rules/` — it would eager-load every session; use `guides/`.
 
+## Shared root and platform adapters
+
+`~/.agents/AGENTS.md` is the sole authored shared policy root. A platform adapter must load it
+before platform deltas by native import when supported, otherwise by a generated snapshot whose
+drift is checked. The adapter must not restate shared rules. It declares whether file reads,
+routers, hooks, tools, sandboxing, session state, and subagents are available; unsupported
+capabilities are reported, never simulated. Repository instructions may add project facts but do
+not replace the global process root. External delegates receive only a bounded root snapshot and
+the task IDs they need, never the orchestrator's session core.
+
 ## Guides
 - Add: create `guides/<meta|work>/<kebab>.md` (English, concise, first line = "Load when:"), add one AGENTS.md Guide router row, verify with `rg`.
 - Edit: change the guide file only; touch AGENTS.md only if the trigger or filename changed.

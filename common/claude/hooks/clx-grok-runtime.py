@@ -45,7 +45,8 @@ except ModuleNotFoundError:  # pragma: no cover - depends on the host interprete
         tomllib = types.SimpleNamespace(TOMLDecodeError=_NoTomlError, loads=_no_toml)
 
 
-SNAPSHOT_FORMAT = b"2"
+SNAPSHOT_FORMAT = b"3"
+SHARED_ROOT = Path(".agents/AGENTS.md")
 NATIVE_SKILLS = {
     "check-work",
     "code-review",
@@ -234,6 +235,7 @@ def validate_snapshot(
     root: Path,
     rows: list[tuple[str, Path, str]],
     expected_agent: str,
+    expected_shared_root: bytes,
     expected_sandbox: bytes,
     expected_native: dict[str, str],
     expected_bundled: dict[str, object],
@@ -274,6 +276,16 @@ def validate_snapshot(
         fail(f"runtime isolation contract drifted: {root}")
     if runtime_agent.read_text(encoding="utf-8") != expected_agent:
         fail(f"runtime agent content drifted: {root}")
+    runtime_shared_root = root / "home" / ".agents" / "AGENTS.md"
+    if (
+        runtime_shared_root.is_symlink()
+        or not runtime_shared_root.is_file()
+        or runtime_shared_root.read_bytes() != expected_shared_root
+    ):
+        fail(f"runtime shared policy root drifted: {root}")
+    shared_root_digest = hashlib.sha256(expected_shared_root).hexdigest()
+    if hashlib.sha256(runtime_shared_root.read_bytes()).hexdigest() != shared_root_digest:
+        fail(f"runtime shared policy digest drifted: {root}")
     if (grok_home / "sandbox.toml").read_bytes() != expected_sandbox:
         fail(f"runtime sandbox content drifted: {root}")
     expected_skills = {name for name, _source, _digest in rows}
@@ -328,6 +340,8 @@ def main() -> int:
         sandbox = tomllib.loads(sandbox_path.read_text(encoding="utf-8"))
         agent_path = Path(config["agent"]["definition"]).resolve(strict=True)
         agent_text = agent_path.read_text(encoding="utf-8")
+        shared_root_path = (config_path.parent.parent / SHARED_ROOT).resolve(strict=True)
+        shared_root_data = shared_root_path.read_bytes()
     except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
         fail(f"configuration or path error: {exc}")
 
@@ -377,9 +391,14 @@ def main() -> int:
             "Do not preload or enumerate skills",
             "Output Korean to the user",
             "No AI attribution",
+            "Read `~/.agents/AGENTS.md` before acting",
+            "sole shared policy root",
         )
     ):
         fail("clx-delegate agent contract drifted")
+    if not shared_root_data or b"## Core always-on" not in shared_root_data:
+        fail("shared policy root is invalid")
+    shared_root_digest = hashlib.sha256(shared_root_data).hexdigest()
 
     manifest_path = config_path.parent / "clx-skill-links.tsv"
     try:
@@ -438,6 +457,7 @@ deny = [{json.dumps(str(intent))}]
         config_path.read_bytes(),
         sandbox_path.read_bytes(),
         agent_text.encode(),
+        shared_root_digest.encode(),
         manifest_data,
         str(repo).encode(),
         runtime_sandbox_data,
@@ -475,6 +495,7 @@ deny = [{json.dumps(str(intent))}]
             runtime,
             rows,
             agent_text,
+            shared_root_data,
             runtime_sandbox_data,
             {name: content_hash for name, (_source, content_hash) in native_sources.items()},
             expected_bundled,
@@ -484,10 +505,15 @@ deny = [{json.dumps(str(intent))}]
         temp = Path(tempfile.mkdtemp(prefix=f".{key}.tmp-", dir=runtime_parent))
         try:
             grok_home = temp / "home" / ".grok"
+            runtime_agents_root = temp / "home" / ".agents"
             skills = grok_home / "skills"
             agents = grok_home / "agents"
             skills.mkdir(parents=True)
             agents.mkdir()
+            runtime_agents_root.mkdir()
+            runtime_shared_root = runtime_agents_root / "AGENTS.md"
+            runtime_shared_root.write_bytes(shared_root_data)
+            runtime_shared_root.chmod(0o444)
             (grok_home / "sessions").symlink_to(stable_sessions, target_is_directory=True)
             for name, source, expected in rows:
                 destination = skills / name
@@ -568,6 +594,7 @@ enabled = false
                     runtime,
                     rows,
                     agent_text,
+                    shared_root_data,
                     runtime_sandbox_data,
                     {name: content_hash for name, (_source, content_hash) in native_sources.items()},
                     expected_bundled,
